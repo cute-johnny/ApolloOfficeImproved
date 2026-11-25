@@ -42,6 +42,14 @@ pub fn start(a: &Ax, fid: &str, node: Option<&str>, input: Value) -> Result<i64,
         None => ns.iter().find(|x| x["t"] == "t.manual").or_else(|| ns.iter().find(|x| x["t"].as_str().is_some_and(|t| t.starts_with("t.")))).cloned(),
     }
     .ok_or("this pipeline has no start block")?;
+    if (tr["t"] == "t.cron" || tr["t"] == "t.hook") && node.is_some() {
+        if let Some(b) = a.db.one("select id, d from runs where flow=? and st='queued' and json_extract(d,'$.blk') is not null order by id limit 1", pa![fid.to_string()]) {
+            let mut d = b["d"].clone();
+            d["skip"] = json!(d["skip"].as_i64().unwrap_or(0) + 1);
+            a.db.run("update runs set d=? where id=?", pa![d.to_string(), b["id"].as_i64().unwrap_or(0)]);
+            return Err("this pipeline waits for a desk, the trigger was skipped".into());
+        }
+    }
     let d = json!({"flow": f, "crew": a.db.kg("crew"), "trig": tr["id"], "input": input, "steps": [], "q": [tr["id"]], "vis": {}, "arr": {}, "fb": "", "wait": null, "err": null});
     a.db.run("insert into runs(flow, st, t0, t1, d) values(?, 'queued', ?, 0, ?)", pa![fid.to_string(), now(), d.to_string()]);
     let id = a.db.n("select max(id) from runs", pa![]);
@@ -309,6 +317,43 @@ async fn exec(a: Ax, id: i64) {
     if st != "queued" {
         return;
     }
+    let need: Vec<String> = d["flow"]["nodes"].as_array().map(|ns| ns.iter().filter(|n| n["t"] == "worker" || n["t"] == "check").filter_map(|n| n["c"]["w"].as_str().map(String::from)).collect()).unwrap_or_default();
+    if d["steps"].as_array().is_none_or(|s| s.is_empty()) {
+        let known = |w: &str| d["crew"].as_array().is_some_and(|c| c.iter().any(|x| x["id"] == w));
+        let empty = d["flow"]["nodes"].as_array().is_some_and(|ns| ns.iter().any(|n| (n["t"] == "worker" || n["t"] == "check") && n["c"]["w"].as_str().is_none_or(|w| !known(w))));
+        if empty {
+            d["err"] = json!("A step has nobody assigned. Pick who does it in the pipeline editor.");
+            store(&a, id, "fail", &d);
+            a.say("pipe", &format!("{} stopped: a step has nobody assigned (run {id})", d["flow"]["n"].as_str().unwrap_or("")), None);
+            return;
+        }
+        if let Some(w) = need.iter().find(|w| !seated(&a, w)) {
+            let wn = d["crew"].as_array().and_then(|c| c.iter().find(|x| x["id"] == w.as_str()).and_then(|x| x["n"].as_str().map(String::from))).unwrap_or_else(|| "A worker".into());
+            let msg = format!("{wn} needs a desk with a chair. Place them in Edit office.");
+            let bt = d["blkt"].as_i64().unwrap_or_else(now);
+            if now() - bt > 24 * 3_600_000 {
+                d["err"] = json!(format!("{wn} waited 24 hours for a desk with a chair."));
+                d["blk"] = Value::Null;
+                store(&a, id, "fail", &d);
+                a.say("pipe", &format!("{} stopped: {wn} had no desk for 24 hours (run {id})", d["flow"]["n"].as_str().unwrap_or("")), None);
+                return;
+            }
+            if d["blk"] != msg {
+                let fname = d["flow"]["n"].as_str().unwrap_or("").to_string();
+                a.say("pipe", &format!("{fname}: {msg} The run starts once everyone has a place. (run {id})"), None);
+                let (a2, m2) = (a.clone(), format!("{fname} (run {id}) waits: {msg}"));
+                tokio::spawn(async move { crate::ntf::send(&a2, "A pipeline waits for a desk", &m2, 3).await });
+            }
+            d["blk"] = json!(msg);
+            d["blkw"] = json!(w);
+            d["blkt"] = json!(bt);
+            store(&a, id, "queued", &d);
+            return;
+        }
+        d["blk"] = Value::Null;
+        d["blkw"] = Value::Null;
+        d["blkt"] = Value::Null;
+    }
     store(&a, id, "run", &d);
     let mut q: VecDeque<String> = d["q"].as_array().map(|x| x.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default();
     let mut n_steps = d["steps"].as_array().map(|x| x.len()).unwrap_or(0);
@@ -352,7 +397,10 @@ async fn exec(a: Ax, id: i64) {
                 }
                 d["blkt"] = json!(bt);
                 if d["blk"] != msg {
-                    a.say("pipe", &format!("{}: {msg} (run {id})", d["flow"]["n"].as_str().unwrap_or("")), None);
+                    let fname = d["flow"]["n"].as_str().unwrap_or("").to_string();
+                    a.say("pipe", &format!("{fname}: {msg} (run {id})"), None);
+                    let (a2, m2) = (a.clone(), format!("{fname} (run {id}) waits: {msg}"));
+                    tokio::spawn(async move { crate::ntf::send(&a2, "A pipeline waits for a desk", &m2, 3).await });
                 }
                 d["blk"] = json!(msg);
                 d["blkw"] = n["c"]["w"].clone();
@@ -371,6 +419,7 @@ async fn exec(a: Ax, id: i64) {
                 return;
             }
             "worker" | "check" => {
+                pin(&a, n["c"]["w"].as_str().unwrap_or(""));
                 d["blk"] = Value::Null;
                 d["blkw"] = Value::Null;
                 d["blkt"] = Value::Null;
@@ -432,7 +481,9 @@ async fn exec(a: Ax, id: i64) {
             "approve" => {
                 d["wait"] = json!(nid);
                 d["q"] = json!(q.iter().collect::<Vec<_>>());
-                rec(&mut d, &n, "", json!({"ask": n["c"]["ask"].as_str().unwrap_or("Continue?")}), true, t0, None);
+                let fq = format!("Continue {} with the next step?", d["flow"]["n"].as_str().unwrap_or("this pipeline"));
+                let ask = n["c"]["ask"].as_str().map(str::trim).filter(|x| !x.is_empty()).map(String::from).unwrap_or(fq);
+                rec(&mut d, &n, "", json!({"ask": ask}), true, t0, None);
                 store(&a, id, "wait", &d);
                 a.say("pipe", &format!("{} waits for your answer (run {id})", d["flow"]["n"].as_str().unwrap_or("")), None);
                 return;
@@ -597,14 +648,17 @@ pub fn stop(a: &Ax, id: i64) -> Result<(), String> {
     Ok(())
 }
 
-pub fn staff(a: &Ax) -> Vec<String> {
+pub fn staff(a: &crate::app::App) -> Vec<String> {
     let busy: HashSet<String> = a.db.all("select distinct flow from runs where st in ('queued','run','wait')", pa![]).iter().filter_map(|x| x["flow"].as_str().map(String::from)).collect();
     let fl = a.db.kg("flows");
     let used: HashSet<String> = fl
         .as_array()
         .map(|fs| fs.iter().filter(|f| f["on"].as_bool().unwrap_or(false) || f["id"].as_str().is_some_and(|i| busy.contains(i))).flat_map(|f| f["nodes"].as_array().cloned().unwrap_or_default()).filter_map(|n| n["c"]["w"].as_str().map(String::from)).collect())
         .unwrap_or_default();
-    a.db.kg("crew").as_array().map(|c| c.iter().filter_map(|w| w["id"].as_str().map(String::from)).filter(|id| used.contains(id)).collect()).unwrap_or_default()
+    let rp = !a.db.all("select 1 from rp limit 1", pa![]).is_empty();
+    let mut v: Vec<String> = if rp { crate::flows::ROLES.iter().filter(|r| r.g == "team" && r.t != "ci").map(|r| r.t.to_string()).collect() } else { vec![] };
+    v.extend(a.db.kg("crew").as_array().map(|c| c.iter().filter_map(|w| w["id"].as_str().map(String::from)).filter(|id| used.contains(id)).collect::<Vec<_>>()).unwrap_or_default());
+    v
 }
 
 pub fn places_at(it: &[Value]) -> Vec<(usize, Option<String>)> {
@@ -692,26 +746,68 @@ pub fn seed_office(db: &crate::db::Db) {
     db.ks("office_seeded", &json!(true));
 }
 
-pub fn seated(a: &Ax, wid: &str) -> bool {
+pub fn seated(a: &crate::app::App, wid: &str) -> bool {
+    let it = a.set()["office"]["items"].as_array().cloned().unwrap_or_default();
+    let ps: Vec<Option<String>> = places_at(&it).into_iter().map(|x| x.1).collect();
+    seat_map(&staff(a), &ps).iter().any(|w| w == wid)
+}
+
+fn fo(pa: &[(usize, Option<String>)], st: &[String]) -> Vec<usize> {
+    let mut v: Vec<usize> = (0..pa.len()).filter(|&i| pa[i].1.is_none()).collect();
+    v.extend((0..pa.len()).filter(|&i| pa[i].1.as_ref().is_some_and(|w| !st.contains(w))));
+    v
+}
+
+fn pin(a: &Ax, wid: &str) {
     let it = a.set()["office"]["items"].as_array().cloned().unwrap_or_default();
     let st = staff(a);
     let pa = places_at(&it);
-    let ps: Vec<Option<String>> = pa.iter().map(|x| x.1.clone()).collect();
-    if !seat_map(&st, &ps).iter().any(|w| w == wid) {
-        return false;
+    if pa.iter().any(|(_, w)| w.as_deref() == Some(wid)) {
+        return;
     }
-    if !pa.iter().any(|(_, w)| w.as_deref() == Some(wid)) {
-        let fixed: Vec<&String> = ps.iter().flatten().filter(|w| st.contains(w)).collect();
-        let j = st.iter().filter(|w| !fixed.contains(w)).position(|w| w == wid).unwrap_or(0);
-        if let Some(&(ix, _)) = pa.iter().filter(|(_, w)| w.as_ref().is_none_or(|w| !st.contains(w))).nth(j) {
-            let mut s = a.db.kg("set");
-            if let Some(c) = s["office"]["items"].get_mut(ix) {
-                c["w"] = json!(wid);
-                a.db.ks("set", &s);
-            }
+    let fixed: Vec<String> = pa.iter().filter_map(|x| x.1.clone()).filter(|w| st.contains(w)).collect();
+    let Some(j) = st.iter().filter(|w| !fixed.contains(w)).position(|w| w == wid) else { return };
+    if let Some(&i) = fo(&pa, &st).get(j) {
+        let mut s = a.db.kg("set");
+        if !s["office"]["items"].is_array() {
+            s["office"]["items"] = json!(it);
+        }
+        if let Some(c) = s["office"]["items"].get_mut(pa[i].0) {
+            c["w"] = json!(wid);
+            a.db.ks("set", &s);
         }
     }
-    true
+}
+
+pub fn seat_view(a: &Ax) -> Value {
+    let it = a.set()["office"]["items"].as_array().cloned().unwrap_or_default();
+    let st = staff(a);
+    let pa = places_at(&it);
+    let fixed: Vec<String> = pa.iter().filter_map(|x| x.1.clone()).filter(|w| st.contains(w)).collect();
+    let mut who: Vec<Option<String>> = pa.iter().map(|(_, w)| w.clone().filter(|w| st.contains(w))).collect();
+    let mut nw = vec![];
+    let mut fr = fo(&pa, &st).into_iter();
+    for w in st.iter().filter(|w| !fixed.contains(w)) {
+        let Some(i) = fr.next() else { break };
+        if pa[i].1.is_none() {
+            nw.push((pa[i].0, w.clone()));
+        }
+        who[i] = Some(w.clone());
+    }
+    if !nw.is_empty() {
+        let mut s = a.db.kg("set");
+        if !s["office"]["items"].is_array() {
+            s["office"]["items"] = json!(it);
+        }
+        for (ix, w) in &nw {
+            if let Some(c) = s["office"]["items"].get_mut(*ix) {
+                c["w"] = json!(w);
+            }
+        }
+        a.db.ks("set", &s);
+    }
+    let seats: Vec<Value> = pa.iter().zip(&who).map(|((ix, _), w)| json!({"c": ix, "w": w})).collect();
+    json!({"seats": seats, "wait": st.iter().filter(|w| !who.contains(&Some((*w).clone()))).collect::<Vec<_>>()})
 }
 
 pub fn active(a: &Ax) -> Vec<Value> {
@@ -722,7 +818,7 @@ pub fn active(a: &Ax) -> Vec<Value> {
             let nid = d["cur"].as_str().or(d["wait"].as_str()).unwrap_or("");
             let n = d["flow"]["nodes"].as_array().and_then(|ns| ns.iter().find(|x| x["id"] == nid).cloned()).unwrap_or(Value::Null);
             let ask = d["steps"].as_array().and_then(|s| s.last()).map(|s| s["out"]["ask"].clone()).unwrap_or(Value::Null);
-            json!({"id": r["id"], "flow": r["flow"], "n": d["flow"]["n"], "st": r["st"], "t0": r["t0"], "w": if n.is_null() { d["blkw"].clone() } else { n["c"]["w"].clone() }, "nt": n["t"], "blk": d["blk"], "ask": if r["st"] == "wait" { ask } else { Value::Null }})
+            json!({"id": r["id"], "flow": r["flow"], "n": d["flow"]["n"], "st": r["st"], "t0": r["t0"], "w": if n.is_null() { d["blkw"].clone() } else { n["c"]["w"].clone() }, "nt": n["t"], "blk": if d["blkw"].as_str().is_some_and(|w| !seated(a, w)) { d["blk"].clone() } else { Value::Null }, "skip": d["skip"], "ask": if r["st"] == "wait" { ask } else { Value::Null }})
         })
         .collect()
 }
@@ -733,7 +829,7 @@ pub fn list(a: &Ax, fid: Option<&str>, st: Option<&str>, lim: i64) -> Vec<Value>
         .map(|r| {
             let d = &r["d"];
             let ask = if d["gate"] == true { d["steps"].as_array().and_then(|s| s.last()).map(|s| s["out"]["ask"].clone()) } else { d["wait"].as_str().and_then(|w| d["flow"]["nodes"].as_array().and_then(|ns| ns.iter().find(|n| n["id"] == w)).map(|n| n["c"]["ask"].clone())) };
-            json!({"id": r["id"], "flow": r["flow"], "name": d["flow"]["n"], "st": r["st"], "t0": r["t0"], "t1": r["t1"], "steps": d["steps"].as_array().map(|s| s.len()).unwrap_or(0), "err": d["err"], "ask": ask})
+            json!({"id": r["id"], "flow": r["flow"], "name": d["flow"]["n"], "st": r["st"], "t0": r["t0"], "t1": r["t1"], "steps": d["steps"].as_array().map(|s| s.len()).unwrap_or(0), "err": d["err"], "ask": ask, "blk": d["blk"]})
         })
         .collect()
 }
@@ -751,10 +847,11 @@ pub async fn runner(a: Ax) {
             continue;
         }
         let ids: Vec<i64> = a.db.all("select id from runs where st='queued' order by json_extract(d,'$.blk') is not null, id limit 10", pa![]).iter().filter_map(|x| x["id"].as_i64()).collect();
+        let cap = (crate::sh::hosts(&a).iter().filter(|h| h.on && a.net(&h.id)).map(|h| h.ln).sum::<i64>() as usize).clamp(3, 16);
         for id in ids {
             {
                 let mut b = busy().lock().unwrap();
-                if b.len() >= 3 || !b.insert(id) {
+                if b.len() >= cap || !b.insert(id) {
                     continue;
                 }
             }
@@ -813,7 +910,8 @@ async fn poll(a: &Ax, fid: &str, n: &Value, pr: bool) {
         seen = json!({});
     }
     for r in repos {
-        let Ok(v) = crate::sh::ghj(&[if pr { "pr" } else { "issue" }, "list", "-R", &r, "--state", "open", "--limit", "20", "--json", "number,title,body,url,labels,createdAt,author"], 60).await else { continue };
+        let Ok(v) = crate::sh::ghj(&[if pr { "pr" } else { "issue" }, "list", "-R", &r, "--state", "open", "--limit", "20", "--json", "number,title,body,url,labels,createdAt,author,assignees"], 60).await else { continue };
+        let me = crate::gh::login(a).await;
         let mut have: Vec<i64> = seen[&r].as_array().map(|x| x.iter().filter_map(|n| n.as_i64()).collect()).unwrap_or_default();
         for it in v.as_array().cloned().unwrap_or_default() {
             let num = it["number"].as_i64().unwrap_or(0);
@@ -822,6 +920,15 @@ async fn poll(a: &Ax, fid: &str, n: &Value, pr: bool) {
             }
             have.push(num);
             if first {
+                continue;
+            }
+            if !pr && a.db.n("select count(*) from jobs where repo=? and num=? and st<>'drop'", pa![r.clone(), num]) > 0 {
+                continue;
+            }
+            if pr && a.db.n("select count(*) from jobs where repo=? and pr=? and st<>'drop'", pa![r.clone(), num]) > 0 {
+                continue;
+            }
+            if !pr && it["assignees"].as_array().is_some_and(|x| x.iter().any(|y| y["login"].as_str() != Some(&me))) {
                 continue;
             }
             if !lb.is_empty() && !it["labels"].as_array().is_some_and(|ls| ls.iter().any(|l| l["name"].as_str().map(|x| x.to_lowercase()) == Some(lb.clone()))) {

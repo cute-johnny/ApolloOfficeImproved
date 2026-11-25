@@ -149,6 +149,64 @@ pub fn dd0() -> PathBuf {
     }
 }
 
+pub fn office_default() -> Value {
+    json!([
+        {"i": "chair", "x": 3, "y": 5},
+        {"i": "desk", "x": 2, "y": 7},
+        {"i": "chair", "x": 9, "y": 5},
+        {"i": "desk", "x": 8, "y": 7},
+        {"i": "chair", "x": 15, "y": 5},
+        {"i": "desk", "x": 14, "y": 7},
+        {"i": "chair", "x": 23, "y": 5},
+        {"i": "desk", "x": 22, "y": 7},
+        {"i": "chair", "x": 29, "y": 5},
+        {"i": "desk", "x": 28, "y": 7},
+        {"i": "chair", "x": 35, "y": 5},
+        {"i": "desk", "x": 34, "y": 7},
+        {"i": "chair", "x": 3, "y": 12},
+        {"i": "desk", "x": 2, "y": 14},
+        {"i": "chair", "x": 9, "y": 12},
+        {"i": "desk", "x": 8, "y": 14},
+        {"i": "chair", "x": 15, "y": 12},
+        {"i": "desk", "x": 14, "y": 14},
+        {"i": "chair", "x": 23, "y": 12},
+        {"i": "desk", "x": 22, "y": 14},
+        {"i": "chair", "x": 29, "y": 12},
+        {"i": "desk", "x": 28, "y": 14},
+        {"i": "chair", "x": 35, "y": 12},
+        {"i": "desk", "x": 34, "y": 14},
+        {"i": "chair", "x": 3, "y": 19},
+        {"i": "desk", "x": 2, "y": 21},
+        {"i": "chair", "x": 9, "y": 19},
+        {"i": "desk", "x": 8, "y": 21},
+        {"i": "chair", "x": 15, "y": 19},
+        {"i": "desk", "x": 14, "y": 21},
+        {"i": "plant", "x": 1, "y": 1},
+        {"i": "plant", "x": 48, "y": 1},
+        {"i": "plant", "x": 19, "y": 8},
+        {"i": "plant", "x": 19, "y": 15},
+        {"i": "plant", "x": 48, "y": 9},
+        {"i": "plant", "x": 1, "y": 26},
+        {"i": "plant", "x": 48, "y": 26},
+        {"i": "plant", "x": 38, "y": 24},
+        {"i": "board", "x": 24, "y": 0},
+        {"i": "shelf", "x": 41, "y": 1},
+        {"i": "coffee", "x": 44, "y": 3},
+        {"i": "cooler", "x": 47, "y": 3},
+        {"i": "sofa", "x": 41, "y": 9},
+        {"i": "lamp", "x": 46, "y": 9},
+        {"i": "rug", "x": 41, "y": 11},
+        {"i": "table", "x": 42, "y": 12},
+        {"i": "radio", "x": 45, "y": 17},
+        {"i": "rack", "x": 41, "y": 23},
+        {"i": "rack", "x": 43, "y": 23},
+        {"i": "rack", "x": 45, "y": 23},
+        {"i": "rug", "x": 25, "y": 22},
+        {"i": "table", "x": 26, "y": 23},
+        {"i": "lamp", "x": 20, "y": 25}
+    ])
+}
+
 pub fn dset() -> Value {
     json!({
         "md": {
@@ -219,6 +277,9 @@ impl App {
                     d[k] = v.clone();
                 }
             }
+        }
+        if !d["office"]["items"].is_array() {
+            d["office"]["items"] = office_default();
         }
         d
     }
@@ -299,8 +360,11 @@ impl App {
     }
 
     pub fn hold(&self, w: &str) -> bool {
-        let l = self.lv.lock().unwrap();
-        l.w.get(w).map(|x| x.hold).unwrap_or(false) || l.o.man || !l.o.pause.is_empty()
+        let h = {
+            let l = self.lv.lock().unwrap();
+            l.w.get(w).map(|x| x.hold).unwrap_or(false) || l.o.man || !l.o.pause.is_empty()
+        };
+        h || (crate::flows::is_core(w) && w != "ci" && !crate::eng::seated(self, w))
     }
 
     pub async fn held(&self, w: &str) {
@@ -427,6 +491,12 @@ mod provider_limit_tests {
         assert!(a.lv.lock().unwrap().o.pause.is_empty());
         assert!(a.provider_limit("cc:sonnet").is_some());assert!(a.provider_limit("codex:").is_none());
         assert!(a.provider_limit("opencode:opencode/beam-free").is_none());
+        assert_eq!(crate::eng::places_at(office_default().as_array().unwrap()).len(), 15);
+        a.db.run("insert into rp(full) values('o/r')", vec![]);
+        assert!(!a.hold("fixer"));
+        a.db.ks("set",&json!({"free_first":true,"tokday":0,"office":{"items":[]}}));
+        assert!(a.hold("fixer"), "the bug-fix team waits without a workplace");
+        a.db.ks("set",&json!({"free_first":true,"tokday":0}));
         assert!(!a.hold("fixer"));
         a.lv.lock().unwrap().o.man=true;assert!(a.hold("fixer"));a.lv.lock().unwrap().o.man=false;
         a.db.ks("set",&json!({"free_first":true,"tokday":1}));a.tok("fixture",1,0);a.tick();
@@ -447,5 +517,31 @@ mod orch_tests {
         assert!(a.orch());
         a.db.ks("set", &json!({"orch": false}));
         assert!(!a.orch());
+    }
+}
+
+#[cfg(test)]
+mod seat_tests {
+    use super::*;
+    #[test]
+    fn workers_keep_their_chair_when_someone_joins() {
+        let db = Db::mem();
+        db.ks("set", &json!({}));
+        let a: Ax = Arc::new(App::new(db, std::env::temp_dir(), 1, "x".into()));
+        let mine = |a: &Ax| -> Vec<(i64, String)> { crate::eng::seat_view(a)["seats"].as_array().unwrap().iter().filter_map(|s| s["w"].as_str().map(|w| (s["c"].as_i64().unwrap(), w.to_string()))).collect() };
+        assert!(mine(&a).is_empty(), "no repository, no bug-fix team at desks");
+        a.db.run("insert into rp(full) values('o/r')", vec![]);
+        let v1 = mine(&a);
+        assert_eq!(v1.len(), 9);
+        a.db.ks("crew", &json!([{"id": "bob", "n": "Bob"}]));
+        a.db.ks("flows", &json!([{"id": "f", "on": true, "nodes": [{"c": {"w": "bob"}}]}]));
+        let v2 = mine(&a);
+        assert_eq!(v2.len(), 10);
+        for x in &v1 {
+            assert!(v2.contains(x), "{x:?} moved");
+        }
+        a.db.ks("flows", &json!([]));
+        let v3 = mine(&a);
+        assert_eq!(v3, v1);
     }
 }

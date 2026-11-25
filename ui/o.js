@@ -80,6 +80,26 @@
   const px = (x, y, w, h, col) => { c.fillStyle = C(col); c.fillRect(Math.round(x), Math.round(y), w, h); };
   const tx = (s, x, y, col) => K.text(c, s, x, y, C(col));
   const party = () => S?.lm && S.t - S.lm.t < 180000;
+  const gray = (h, k) => { if (!HX.test(h || "")) return h; const n = parseInt(h.slice(1), 16), y = Math.round(((n >> 16) * 0.3 + ((n >> 8) & 255) * 0.59 + (n & 255) * 0.11) * k); return "#" + [y, y, y].map((v) => v.toString(16).padStart(2, "0")).join(""); };
+  const dim = (sk) => ({ ...sk, body: gray(sk.body, 0.6), dark: gray(sk.dark, 0.6), light: gray(sk.light, 0.6) });
+  const core = (id) => !!(S?.crew || []).find((w) => w.id === id)?.core;
+  const skOf = (id) => (core(id) && SK[id]) || SK["c:" + id] || { body: "#8d9199", dark: "#62666d", light: "#b9bcc2" };
+  const hlOf = (id) => (core(id) ? hl(id) : SK["c:" + id] ? hl("c:" + id) : "#b9bcc2");
+  const nowS = () => (S ? S.t + (performance.now() - last) : Date.now());
+  const acc = {
+    hunter: (r, sk, t) => { K.px(fc, r.left - 1, r.top - 1, sk.dark, r.bw + 2, 1); K.px(fc, r.left + 2, r.top - 3, sk.dark, r.bw - 4, 2); K.px(fc, r.cx - 1, r.top - 4, "#5cbf6a", 2, 1); },
+    scout: (r, sk, t) => { K.px(fc, r.cx, r.top - 4, sk.dark, 1, 4); K.px(fc, r.cx - 1, r.top - 6, Math.floor(t * 3) % 2 ? "#e8e6df" : sk.light, 3, 2); },
+    guard: (r, sk) => { K.draw(fc, ["sss", "sws", "sss", ".s."], r.left + 2, r.top + 4, { body: sk.body }); },
+    vet: (r) => { const y = r.eyeY - 1; for (const x of [r.cx - 5, r.cx + 2]) { K.px(fc, x, y, "#e8e6df", 4, 1); K.px(fc, x, y + 3, "#e8e6df", 4, 1); K.px(fc, x, y, "#e8e6df", 1, 4); K.px(fc, x + 3, y, "#e8e6df", 1, 4); } K.px(fc, r.cx - 1, y + 1, "#e8e6df", 3, 1); },
+    repro: (r, sk, t, p) => { const x = r.handR.x, y = r.handR.y - 5 + (p.mood === "work" ? Math.round(Math.sin(t * 4)) : 0); K.draw(fc, [".ww.", "w..w", "w..w", ".ww.", "...g", "....g"], x, y, {}); },
+    reviewer: (r) => { K.px(fc, r.handR.x, r.handR.y - 4, "#e0675a", 1, 4); K.px(fc, r.handR.x, r.handR.y, "#e8e6df", 1, 1); },
+    watcher: (r) => { K.px(fc, r.left - 1, r.top - 2, "#55524b", r.bw + 2, 1); K.px(fc, r.left - 2, r.top - 1, "#55524b", 1, 4); K.px(fc, r.right + 1, r.top - 1, "#55524b", 1, 4); K.px(fc, r.left - 3, r.top + 1, "#e8e6df", 2, 3); K.px(fc, r.right + 1, r.top + 1, "#e8e6df", 2, 3); },
+  };
+  const HAT = (r, t) => { K.draw(fc, ["..1..", ".121.", "11211"], r.cx - 2, r.top - 4, { c1: ["#4fb3e0", "#d0649f", "#5cbf6a"][Math.floor(t * 4) % 3], c2: "#e8e6df" }); };
+  const RL = (id) => { if (id === "local") return "ME"; const m = id.match(/^([a-z])[a-z]*[-_ ]?(\d+)$/i); return (m ? m[1] + m[2] : id.replace(/[^a-z0-9]/gi, "")).slice(0, 3).toUpperCase(); };
+  const RK = () => (S?.hs || []).filter((h) => h.on_).map((h) => [h.id, RL(h.id)]);
+  const RH = new Map();
+  const LF = [], RW = {};
 
   const SD = { floor: { d: ["#0d0e10", "#111215"], l: ["#e9eef3", "#e2e8ee"] }, wall: { d: ["#121317", "#1d1f24"], l: ["#f8f9fb", "#dde3ea"] } };
   const SV = { floor: { d: ["#24272d", "#3a3e46"], l: ["#d5dce4", "#aeb8c4"] }, wall: { d: ["#24272d", "#3a3e46"], l: ["#d5dce4", "#aeb8c4"] } };
@@ -118,16 +138,53 @@
     desk: { n: "Desk", w: 4, h: 2, d: (X, Y) => { px(X + 10, Y - 5, 12, 8, "#2a2c32"); px(X + 11, Y - 4, 10, 6, "#141518"); px(X + 12, Y - 3, 5, 1, "#4fb3e0"); px(X + 15, Y + 3, 2, 2, "#2a2c32"); px(X, Y + 5, 32, 3, "#2a2c32"); px(X, Y + 8, 32, 5, "#1c1e22"); px(X + 2, Y + 13, 2, 3, "#2a2c32"); px(X + 28, Y + 13, 2, 3, "#2a2c32"); } },
     chair: { n: "Chair", w: 2, h: 2, d: (X, Y) => { px(X + 3, Y, 10, 7, "#30333a"); px(X + 2, Y + 7, 12, 4, "#3a3e46"); px(X + 7, Y + 11, 2, 3, "#2a2c32"); px(X + 3, Y + 14, 10, 1, "#2a2c32"); } },
     plant: { n: "Plant", w: 1, h: 1, d: (X, Y) => { px(X + 1, Y + 3, 6, 5, "#2a2c32"); K.draw(c, ["..e.e..", ".eEe.e.", "e.eEee.", ".eeEe.e", "..eEe.."], X, Y - 3, {}); } },
-    rack: { n: "Server", w: 2, h: 2, d: (X, Y, t) => { px(X + 1, Y - 16, 14, 31, "#1c1e22"); px(X + 1, Y - 16, 14, 1, "#2a2c32"); for (let i = 0; i < 5; i++) { px(X + 3, Y - 13 + i * 5, 10, 4, "#141518"); px(X + 9, Y - 12 + i * 5, 1, 1, Math.floor(t * 2 + i + X) % 3 ? "#3d4045" : "#5cbf6a"); px(X + 11, Y - 12 + i * 5, 1, 1, "#3d4045"); } } },
+    rack: { n: "Server", w: 2, h: 2, d: (X, Y, t, u) => {
+      const hh = u && RH.get(u), h = hh?.[0], jbs = h ? (S?.q || []).filter((q) => q.h === h && ["repro", "fix", "ci", "review", "gate", "submit"].includes(q.st)) : [];
+      const ci = jbs.some((q) => q.st === "ci"), busy = jbs.length > 0, down = h && S?.o?.net?.[h] === false;
+      px(X + 1, Y - 16, 14, 31, "#1c1e22"); px(X + 1, Y - 16, 14, 1, "#2a2c32");
+      for (let i = 0; i < 5; i++) {
+        px(X + 3, Y - 13 + i * 5, 10, 4, "#141518"); px(X + 4, Y - 12 + i * 5, 3, 1, "#26282d");
+        for (let j = 0; j < 2; j++) { const on = ci ? Math.floor(t * (5 + i) + j * 3 + i + X) % 3 !== 0 : busy ? Math.floor(t * 1.5 + i + j + X) % 4 === 0 : h ? (i + j) % 5 === 0 : Math.floor(t * 2 + i + j + X) % 3 === 0; px(X + 9 + j * 2, Y - 12 + i * 5, 1, 1, down ? "#2a1715" : on ? (ci ? "#5cbf6a" : busy ? "#d97757" : h ? "#3d4045" : "#5cbf6a") : "#232529"); }
+      }
+      if (!h) return;
+      px(X + 6, Y - 20, 4, 3, down ? (Math.floor(t * 2) % 2 ? "#e0675a" : "#4a1f1b") : ci ? (Math.floor(t * 2) % 2 ? "#4fb3e0" : "#2f86b0") : busy ? "#d97757" : "#3d4045");
+      if (jbs.length > 1) tx(String(jbs.length), X + 12, Y - 22, "#b9bcc2");
+      tx(hh[1], X + 8 - (K.textWidth(hh[1]) >> 1), Y + 17, down ? "#e0675a" : busy ? (lt() ? "#15171b" : "#d4d6da") : lt() ? "#4a4e56" : "#7d828a");
+    } },
+    board: { n: "Board", w: 8, h: 2, d: (X, Y, t) => {
+      px(X, Y - 8, 64, 22, "#0a0b0d"); px(X, Y - 8, 64, 1, "#24272d");
+      tx("APOLLO OFFICE", X + 4, Y - 5, "#8a8d94");
+      if (!S) return;
+      const n = S.n || {}, q = ["ready", "repro", "fix", "ci", "review", "gate", "submit"].reduce((a, k) => a + (n[k] || 0), 0) + (S.rn || []).length, op = (S.pr || []).filter((p) => p.st === "open").length, ap = (n.approve || 0) + (S.rw || 0);
+      if (S.o?.off) { if (Math.floor(t * 2) % 2) tx("OFFLINE", X + 4, Y + 4, "#e0675a"); }
+      else if (party()) { if (Math.floor(t * 3) % 2) tx("MERGED!", X + 4, Y + 4, "#5cbf6a"); }
+      else if (ap) tx(`APPROVE ${ap}`, X + 4, Y + 4, Math.floor(t * 1.5) % 2 ? "#94dd9e" : "#5cbf6a");
+      else tx(Math.floor(t / 4) % 2 ? `${op} PRS` : `${q} JOBS`, X + 4, Y + 4, "#8a8d94");
+      const live = !S.o?.off && !S.o?.pause && !S.o?.man;
+      px(X + 58, Y - 5, 3, 3, live ? (Math.floor(t * 1.5) % 2 ? "#5cbf6a" : "#3d9149") : S.o?.off ? "#e0675a" : "#8d9199");
+      const d = new Date(), hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      tx(hm, X + 60 - K.textWidth(hm), Y + 4, "#4a4d54");
+    } },
+    radio: { n: "Radio", w: 3, h: 2, d: (X, Y, t) => {
+      const on = !!(S?.q || []).some((q) => q.st === "ci"), x = X + 1, y = Y + 2;
+      px(x, y, 22, 12, "#2a2c32"); px(x + 1, y + 1, 20, 10, "#1c1e22");
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) px(x + 3 + i * 2, y + 3 + j * 2, 1, 1, "#3d4045");
+      px(x + 13, y + 3, 6, 2, on ? "#5cbf6a" : "#3d4045");
+      const bar = (i) => (on ? 1 + Math.floor((Math.sin(t * (6 + i * 1.7) + i) + 1) * 1.5) : 1);
+      for (let i = 0; i < 3; i++) px(x + 13 + i * 2, y + 10 - bar(i), 1, bar(i), on ? "#5cbf6a" : "#3d4045");
+      px(x + 4, y - 3, 1, 3, "#3d4045");
+      if (on) for (let k = 0; k < 2; k++) { const p = (t * 0.5 + k / 2) % 1; c.globalAlpha = 1 - p; K.draw(c, ["..ww", "..w.", "ww..", "ww.."], x + 18 + k * 4 + Math.sin(t * 2 + k) * 2, y - p * 14, {}); c.globalAlpha = 1; }
+    } },
     sofa: { n: "Sofa", w: 5, h: 2, d: (X, Y) => { px(X + 1, Y - 2, 38, 8, "#3f5fae"); px(X + 1, Y + 6, 38, 6, "#5c7fd6"); px(X, Y + 2, 4, 11, "#3f5fae"); px(X + 36, Y + 2, 4, 11, "#3f5fae"); px(X + 19, Y + 6, 1, 6, "#3f5fae"); px(X + 2, Y + 13, 2, 2, "#1c1e22"); px(X + 36, Y + 13, 2, 2, "#1c1e22"); } },
     table: { n: "Table", w: 3, h: 2, d: (X, Y) => { px(X + 1, Y + 2, 22, 7, "#4a3a2c"); px(X + 1, Y + 2, 22, 1, "#6b5440"); px(X + 1, Y + 9, 22, 2, "#3a2d22"); px(X + 3, Y + 11, 2, 4, "#3a2d22"); px(X + 19, Y + 11, 2, 4, "#3a2d22"); } },
     shelf: { n: "Shelf", w: 4, h: 1, d: (X, Y) => { px(X, Y - 16, 32, 24, "#2a2c32"); for (let i = 0; i < 3; i++) { px(X + 2, Y - 14 + i * 7, 28, 5, "#141518"); for (let k = 0; k < 7; k++) px(X + 3 + k * 4, Y - 13 + i * 7 + ((k + i) % 3 ? 0 : 1), 3, 4 - ((k + i) % 3 ? 0 : 1), ["#e0675a", "#5c7fd6", "#5cbf6a", "#9c7ae0", "#d0649f", "#4fb3e0"][(k * 3 + i) % 6]); } } },
     coffee: { n: "Coffee", w: 2, h: 1, d: (X, Y, t) => { px(X, Y - 2, 16, 10, "#2a2c32"); px(X + 3, Y - 12, 10, 10, "#62666d"); px(X + 4, Y - 11, 8, 3, "#1c1e22"); px(X + 6, Y - 6, 4, 4, "#e9eef3"); if (Math.floor(t * 1.5) % 3 === 0) px(X + 7, Y - 15, 1, 2, "#8d9199"); } },
     cooler: { n: "Water", w: 1, h: 1, d: (X, Y) => { px(X + 1, Y - 2, 6, 10, "#b9bcc2"); px(X + 2, Y - 10, 4, 8, "#4fb3e0"); px(X + 2, Y - 10, 4, 1, "#8fd2f0"); } },
     lamp: { n: "Lamp", w: 1, h: 1, d: (X, Y) => { px(X + 3, Y - 10, 2, 17, "#3d4045"); px(X + 1, Y - 14, 6, 4, "#e4e9ef"); px(X + 1, Y + 6, 6, 2, "#2a2c32"); } },
+    workplace: { n: "Workplace", w: 4, h: 4, d: (X, Y, tt) => { FC.chair.d(X + 8, Y, tt); FC.desk.d(X, Y + 16, tt); } },
     rug: { n: "Rug", w: 6, h: 4, l: 0, d: (X, Y) => { px(X, Y, 48, 32, "#5a2f3a"); px(X + 2, Y + 2, 44, 28, "#7a3f4f"); px(X + 6, Y + 6, 36, 20, "#5a2f3a"); px(X + 8, Y + 8, 32, 16, "#8a4a5c"); } },
   };
-  let FU = [], ftool = null, fsel = -1, fedit = false, fhov = null, fdrag = null, fsave = 0, fhis = [], ffut = [], fbad = false;
+  let WK = null, WT = null, FU = [], ftool = null, fsel = -1, fedit = false, fhov = null, fdrag = null, fsave = 0, fhis = [], ffut = [], fbad = false;
   const fl = (i) => FC[i].l ?? 1;
   const free = (it, x, y, skip) => {
     const f = FC[it];
@@ -193,36 +250,46 @@
     return ids.filter((id) => !taken.has(id) && !auto.includes(id));
   };
   const seats = () => {
+    if (S?.seat && !fedit && !fsave) {
+      const ps = places(), m = new Map(), ids = new Set();
+      for (const s of S.seat.seats || []) if (s.w && FU[s.c]?.i === "chair") { m.set(s.c, { id: s.w, back: !!ps.find((p) => p.k === s.c)?.back }); ids.add(s.w); }
+      return { m, wait: (S.seat.wait || []).filter((id) => (S?.crew || []).some((w) => w.id === id)), ids };
+    }
     const st = (S?.staff || []).filter((id) => (S?.crew || []).some((w) => w.id === id)), ps = places();
     const m = new Map(), ids = new Set();
     for (const p of ps) if (p.w && st.includes(p.w) && !ids.has(p.w)) { m.set(p.k, { id: p.w, back: p.back }); ids.add(p.w); }
     const rest = st.filter((id) => !ids.has(id));
     for (const p of ps) { if (m.has(p.k) || (p.w && st.includes(p.w))) continue; const id = rest.shift(); if (!id) break; m.set(p.k, { id, back: p.back }); ids.add(id); }
-    // Built-in workers take only the desks nobody hired is using and never count toward any limit.
-    const b = new Map(), bs = crowd(), left = ps.filter((p) => !m.has(p.k) && !(p.w && st.includes(p.w)));
-    bs.forEach((n, i) => { if (left[i]) b.set(left[i].k, { n, back: left[i].back }); });
-    return { m, b, wait: st.filter((id) => !ids.has(id)), bwait: bs.slice(left.length), ids };
+    return { m, wait: st.filter((id) => !ids.has(id)), ids };
   };
   const pst = (id) => {
+    if (core(id)) { const w = S?.w?.[id] || {}; if (w.hold || (S?.o?.pause && w.st !== "work") || S?.o?.man) return "sleep"; if (S?.o?.off && w.st !== "work") return "off"; return w.st === "work" ? "work" : "idle"; }
     const rs = (S?.rn || []).filter((r) => r.w === id);
     if (rs.some((r) => r.st === "run" && !r.blk)) return "work";
     if (S?.o?.man) return "sleep";
     return "idle";
   };
-  const person = (id, x, y, t, sit, back, bi) => {
-    const k = bi ? id : "c:" + id, s0 = SK[k] || { body: "#8d9199", dark: "#62666d", light: "#b9bcc2" }, sk = back ? { ...s0, eye: s0.body } : s0;
-    const bt = bi ? bstat(id) : null;
-    const st = bi ? (S?.o?.man ? "sleep" : bt.wk ? "work" : "idle") : sit ? pst(id) : "wait", sd = id.length * 1.7 + id.charCodeAt(0) * 0.13;
+  const person = (id, x, y, t, sit, back, wk) => {
+    const s0 = skOf(id), st = wk ? "walk" : sit ? pst(id) : "wait", sd = id.length * 1.7 + id.charCodeAt(0) * 0.13;
+    const w = core(id) ? S?.w?.[id] || {} : null, mood = w && nowS() - (w.t || 0) < 6000 ? w.mood : "", pt = sit && party();
     const p = K.pose();
     p.legs = sit ? "sit" : "stand";
+    if (wk) { const q = Math.floor(t * 8) % 2; p.lift = [q * 2, (1 - q) * 2, q * 2, (1 - q) * 2]; p.dy = q ? -1 : 0; p.mirror = wk < 0; }
     const bl = Math.floor((t + sd) * 10) % 47 === 0;
-    if (st === "work") {
+    if (pt) {
+      p.armL = "top"; p.armR = "top"; p.eyes = "glad"; p.mouth = "wide";
+      p.dy = Math.floor(t * 5 + sd) % 2 ? -3 : 0;
+      p.aL = [0, Math.floor(t * 5 + sd) % 2 ? -1 : 0]; p.aR = [0, Math.floor(t * 5 + sd) % 2 ? 0 : -1];
+    } else if (st === "work") {
       const q = Math.floor(t * 9 + sd);
       p.armL = "front"; p.armR = "front"; p.aL = [0, q % 2 ? -1 : 0]; p.aR = [0, q % 2 ? 0 : -1];
       p.ex = -1; p.ey = 1; p.dy = Math.floor(t * 4 + sd) % 4 === 0 ? -1 : 0;
+      if (Math.floor(t * 0.7 + sd) % 5 === 0) { p.ex = 0; p.ey = -1; p.eyes = "half"; }
       if (bl) p.eyes = "shut";
     } else if (st === "sleep") {
       p.eyes = "shut"; p.bh = -1; p.dy = 1; p.armL = "low"; p.armR = "low";
+    } else if (st === "off") {
+      p.eyes = "half"; p.mouth = "flat"; p.bh = -1;
     } else if (st === "wait") {
       p.ex = [0, 1, 0, -1][Math.floor((t + sd) * 0.7) % 4]; p.armL = "low"; p.armR = "low";
       if (bl) p.eyes = "shut";
@@ -230,40 +297,101 @@
       p.bh = Math.floor((t + sd) * 0.8) % 2 ? 0 : -1; p.ex = [0, 1, 0, -1][Math.floor((t + sd) * 0.4) % 4];
       if (bl) p.eyes = "shut";
     }
+    if (!pt && mood === "ok") { p.eyes = "glad"; p.mouth = "smile"; p.armL = "top"; p.armR = "top"; p.dy = Math.floor(t * 6) % 2 ? -2 : 0; }
+    else if (!pt && (mood === "sad" || mood === "err")) { p.eyes = "sad"; p.mouth = "sad"; p.armL = "low"; p.armR = "low"; }
+    p.mood = st;
+    const s1 = st === "off" ? dim(s0) : s0, sk = back ? { ...s1, eye: s1.body } : s1;
     fc.clearRect(0, 0, K.W, K.H);
-    K.figure(fc, p, t, sk);
+    const { r } = K.figure(fc, p, t, sk);
+    if (!back && w && acc[id]) acc[id](r, sk, t, p);
+    if (pt) HAT(r, t + sd);
     c.drawImage(fig, Math.round(x - 24), Math.round(y - 41));
-    hits.push(bi ? { k: "w:" + id, b: [x - 9, y - 30, x + 9, y - 4], n: id, q: bt.job } : { k: "p:" + id, b: [x - 9, y - 30, x + 9, y - 4], p: id });
-    if (st === "sleep") { const z = ((t + sd) * 0.6) % 1; c.globalAlpha = 1 - z; tx("Z", x + 8 + z * 4, y - 26 - z * 8, "#75746f"); c.globalAlpha = 1; }
+    hits.push({ k: "p:" + id, b: [x - 9, y - 30, x + 9, y - 4], p: id });
+    if (st === "sleep" && !pt) { const z = ((t + sd) * 0.6) % 1; c.globalAlpha = 1 - z; tx("Z", x + 8 + z * 4, y - 26 - z * 8, "#75746f"); c.globalAlpha = 1; }
     if (st === "wait") tx("?", x + 9, y - 18 + (Math.floor(t * 2 + sd) % 2), "#e0675a");
   };
   const pname = (id) => ((S?.crew || []).find((w) => w.id === id)?.n || id).slice(0, 10).toUpperCase();
   const fdraw = (t) => {
     const ord = FU.map((u, k) => [u, k]).sort((a, b) => fl(a[0].i) - fl(b[0].i) || a[0].y + FC[a[0].i].h - (b[0].y + FC[b[0].i].h));
     const hk = fedit && !fdrag && !ftool ? pick(fhov) : -1;
-    const sm = fedit ? { m: new Map(), b: new Map(), wait: [], bwait: [] } : seats();
+    const sm = fedit ? { m: new Map(), wait: [] } : seats();
+    const dt = Math.min(0.1, Math.max(0, t - (WT ?? t))); WT = t;
+    if (!fedit) {
+      const tg = new Map();
+      for (const [k, { id }] of sm.m) { const u = FU[k]; if (u) tg.set(id, { x: u.x * 8 + 8, y: GO + u.y * 8 + 14 }); }
+      if (!WK && tg.size) { WK = {}; for (const [id, g] of tg) WK[id] = { x: g.x, y: g.y, tx: g.x, ty: g.y, s: 1, wp: [] }; }
+      if (WK) {
+        for (const [id, g] of tg) if (!WK[id]) WK[id] = { x: -12, y: g.y - 22, wp: [] };
+        for (const id of Object.keys(WK)) {
+          const q = WK[id], g = tg.get(id) || { x: -12, y: q.y, out: 1 };
+          if (q.tx !== g.x || q.ty !== g.y) {
+            q.tx = g.x; q.ty = g.y;
+            const y0 = q.s ? q.y - 22 : q.y;
+            q.wp = g.out ? [[q.x, y0], [-12, y0]] : [[q.x, y0], [g.x + 24, y0], [g.x + 24, g.y - 22], [g.x, g.y - 22], [g.x, g.y]];
+            q.s = 0;
+          }
+          let d = 46 * dt;
+          while (d > 0 && q.wp.length) {
+            const [wx, wy] = q.wp[0], ax = wx - q.x, ay = wy - q.y, L = Math.abs(ax) + Math.abs(ay);
+            if (L <= d) { q.x = wx; q.y = wy; d -= L; q.wp.shift(); continue; }
+            if (Math.abs(ax) > 0) { const s = Math.sign(ax) * Math.min(d, Math.abs(ax)); q.x += s; q.f = Math.sign(ax); d -= Math.abs(s); }
+            if (d > 0 && Math.abs(ay) > 0) { q.y += Math.sign(ay) * Math.min(d, Math.abs(ay)); d = 0; }
+          }
+          q.m = q.wp.length > 0;
+          if (!q.m) { q.s = 1; if (g.out) delete WK[id]; }
+        }
+      }
+    }
+    const mv = (id) => !fedit && WK?.[id]?.m;
+    RH.clear(); { const rk = RK(); FU.filter((u) => u.i === "rack").sort((a, b) => a.y - b.y || a.x - b.x).forEach((u, i) => { if (rk[i]) RH.set(u, rk[i]); }); }
     for (const [u, k] of ord) {
       if (fdrag && fdrag.k === k) continue;
-      FU[k] && FC[u.i].d(u.x * 8, GO + u.y * 8, t);
-      if (sm.m.has(k)) person(sm.m.get(k).id, u.x * 8 + 8, GO + u.y * 8 + 14, t, true, sm.m.get(k).back);
-      else if (sm.b.has(k)) person(sm.b.get(k).n, u.x * 8 + 8, GO + u.y * 8 + 14, t, true, sm.b.get(k).back, true);
+      FU[k] && FC[u.i].d(u.x * 8, GO + u.y * 8, t, u);
+      if (sm.m.has(k) && !mv(sm.m.get(k).id)) person(sm.m.get(k).id, u.x * 8 + 8, GO + u.y * 8 + 14, t, true, sm.m.get(k).back);
 
       if (fedit && k === fsel) box(u, "#4fb3e0", 0.95);
       else if (k === hk) box(u, lt() ? "#000" : "#fff", 0.35);
     }
-    for (const [k, { id, back }] of sm.m) { const u = FU[k]; if (!u || (fdrag && fdrag.k === k)) continue; const nm = pname(id), on = pst(id) === "work"; tx(nm, u.x * 8 + 8 - (K.textWidth(nm) >> 1), GO + u.y * 8 + (back ? 18 : -6), on ? hl("c:" + id) : "#6b6f76"); }
-    for (const [k, { n, back }] of sm.b) { const u = FU[k]; if (!u || (fdrag && fdrag.k === k)) continue; const nm = NM[n].slice(0, 10).toUpperCase(); tx(nm, u.x * 8 + 8 - (K.textWidth(nm) >> 1), GO + u.y * 8 + (back ? 18 : -6), bstat(n).wk ? hl(n) : "#6b6f76"); }
+    if (!fedit) for (const id of Object.keys(WK || {})) { const q = WK[id]; if (!q.m) continue; person(id, Math.round(q.x), Math.round(q.y), t, false, false, q.f || 1); const nm = pname(id); tx(nm, Math.round(q.x) - (K.textWidth(nm) >> 1), Math.round(q.y) - 38, lt() ? "#4a4e56" : "#7d828a"); }
+    for (const [k, { id, back }] of sm.m) { const u = FU[k]; if (!u || (fdrag && fdrag.k === k) || mv(id)) continue; const nm = pname(id), on = pst(id) === "work"; tx(nm, u.x * 8 + 8 - (K.textWidth(nm) >> 1), GO + u.y * 8 + (back ? 18 : 34), on ? hlOf(id) : lt() ? "#4a4e56" : "#7d828a"); }
+    if (!fedit) {
+      const dk = new Map(places().map((q) => [q.k, q.dk])), SP = {};
+      for (const [k, { id, back }] of sm.m) {
+        const u = FU[k]; if (!u) continue;
+        SP[id] = [u.x * 8 + 8, GO + u.y * 8 - 8];
+        const d = FU[dk.get(k)]; if (!d || back) continue;
+        const X = d.x * 8, Y = GO + d.y * 8, st = pst(id), sk = skOf(id);
+        if (st === "off") { px(X + 11, Y - 4, 10, 6, "#0b0c0e"); if (Math.floor(t * 2) % 2) px(X + 15, Y - 2, 2, 2, "#e0675a"); }
+        else if (st === "work") { px(X + 11, Y - 4, 10, 6, "#0f1a1e"); const q = Math.floor(t * 6 + id.length); for (let i = 0; i < 3; i++) px(X + 12, Y - 3 + i * 2, 1 + ((q + i) * 7) % 8, 1, i === 2 ? sk.light : sk.dark); }
+        else if (st === "sleep") px(X + 11, Y - 4, 10, 6, "#0b0c0e");
+        else { px(X + 11, Y - 4, 10, 6, "#141518"); px(X + 12, Y - 3, 3, 1, sk.dark); if (Math.floor(t * 1.2 + id.length) % 2) px(X + 16, Y - 3, 1, 1, sk.light); }
+      }
+      { const rs = [...RH.entries()].sort((a, b) => ((S?.q || []).some((q) => q.st === "ci" && q.h === b[1][0]) ? 1 : 0) - ((S?.q || []).some((q) => q.st === "ci" && q.h === a[1][0]) ? 1 : 0)); const ru = rs[0]?.[0] || FU.find((u) => u.i === "rack"); if (ru) SP.ci = [ru.x * 8 + 8, GO + ru.y * 8 - 20]; }
+      const nw = nowS(), PL = ["w....", "www..", "wwwww", ".gww.", "..g.."];
+      for (let i = LF.length - 1; i >= 0; i--) if (nw - LF[i].t > 4000) LF.splice(i, 1);
+      for (const f of [...(S?.fl || []), ...LF]) {
+        const A = SP[f.a], B = SP[f.b]; if (!A || !B) continue;
+        const k0 = Math.min(1, (nw - f.t) / 2200); if (k0 >= 1 || k0 < 0) continue;
+        const hgt = 18 + Math.min(40, Math.hypot(B[0] - A[0], B[1] - A[1]) * 0.25);
+        const pos = (q) => [A[0] + (B[0] - A[0]) * q, A[1] + (B[1] - A[1]) * q - Math.sin(q * Math.PI) * hgt];
+        const e = k0 < 0.5 ? 2 * k0 * k0 : 1 - Math.pow(-2 * k0 + 2, 2) / 2;
+        for (let j = 1; j <= 16; j++) { const q = e - j * 0.018; if (q <= 0) break; if (j % 2) continue; const [qx, qy] = pos(q); c.globalAlpha = (1 - j / 17) * 0.85; px(qx, qy, 2, 2, hlOf(f.a)); }
+        c.globalAlpha = 1;
+        const [x, y] = pos(e), [nx] = pos(Math.min(1, e + 0.02)), fl2 = nx < x;
+        PL.forEach((row, ry) => [...row].forEach((ch, rx) => { if (ch !== ".") px(x - 5 + (fl2 ? 4 - rx : rx) * 2, y - 5 + ry * 2, 2, 2, ch === "w" ? "#f2efe6" : "#9a988f"); }));
+      }
+      if (party()) { const cs = ["#4fb3e0", "#d0649f", "#5cbf6a", "#9c7ae0", "#e0675a", "#e8e6df"]; for (let i = 0; i < 90; i++) { const sx = (i * 97.13) % VW, sp = 18 + (i % 7) * 6, y = ((t * sp + i * 37) % (VH + 20)) - 10; px(sx + Math.sin(t * 2 + i) * 4, y, 2, 1 + (i % 2), cs[i % cs.length]); } }
+    }
     if (fedit) {
       const ps = places(), pd = new Set(ps.map((p) => p.dk)), pc = new Set(ps.map((p) => p.k));
       FU.forEach((u, k) => {
         if (u.i !== "desk" && u.i !== "chair") return;
         const ok = u.i === "desk" ? pd.has(k) : pc.has(k), w = FC[u.i].w * 8;
         px(u.x * 8 + w - 5, GO + u.y * 8 - 2, 4, 4, ok ? "#5cbf6a" : "#e0675a");
+        if (u.i === "chair") { const sid = u.w || (S?.seat?.seats || []).find((s) => s.c === k)?.w; if (sid) { const nm = pname(sid), wx = K.textWidth(nm); px(u.x * 8 + 7 - (wx >> 1), GO + u.y * 8 + 16, wx + 2, 7, "#0b0c0e"); tx(nm, u.x * 8 + 8 - (wx >> 1), GO + u.y * 8 + 17, u.w ? "#ecebe6" : "#b9bcc2"); } }
       });
     }
     sm.wait.forEach((id, i) => { const x = 20 + i * 24, y = VH - 8; person(id, x, y, t, false); const nm = pname(id); tx(nm, x - (K.textWidth(nm) >> 1), y - 26, "#e0675a"); });
-    // Built-ins without a desk stand together in the bottom-right corner; the strip and tooltips still work.
-    sm.bwait.forEach((n, i) => { const x = VW - 20 - i * 24, y = VH - 8; if (x < 20 + sm.wait.length * 24) return; person(n, x, y, t, false, false, true); const nm = NM[n].slice(0, 10).toUpperCase(); tx(nm, x - (K.textWidth(nm) >> 1), y - 26 - (i % 2) * 9, bstat(n).wk ? hl(n) : "#6b6f76"); });
     if (!fedit && !places().length) {
       const a = "NO DESKS YET", b2 = "EDIT OFFICE: ADD A DESK WITH A CHAIR", cx0 = VW >> 1, cy0 = GO + ((VH - GO) >> 1) - 12;
       tx(a, cx0 - (K.textWidth(a) >> 1), cy0, lt() ? "#4c515b" : "#9a9ea6");
@@ -276,6 +404,7 @@
       fbad = !ok;
       c.globalAlpha = 0.22; px(g.x * 8, GO + g.y * 8, f.w * 8, f.h * 8, ok ? "#5cbf6a" : "#e0675a");
       c.globalAlpha = ok ? 0.85 : 0.5; f.d(g.x * 8, GO + g.y * 8, t); c.globalAlpha = 1;
+      if (!ok) { const m = g.x < 0 || g.y < 0 || g.x + f.w > GX || g.y + f.h > GY ? "OUTSIDE THE ROOM" : "SPOT TAKEN", mw = K.textWidth(m); px(g.x * 8 + f.w * 4 - (mw >> 1) - 2, GO + g.y * 8 - 11, mw + 4, 9, "#0b0c0e"); tx(m, g.x * 8 + f.w * 4 - (mw >> 1), GO + g.y * 8 - 10, "#e0675a"); }
     } else if (fdrag && !fhov) fbad = true;
   };
   const cell = (e) => {
@@ -303,8 +432,15 @@
     const r = cv.getBoundingClientRect(), sr = $("stage").getBoundingClientRect(), k = r.width / VW, f = FC[u.i];
     fab.hidden = false;
     const x = r.left - sr.left + (u.x * 8 + f.w * 4) * k, yt = r.top - sr.top + (GO + u.y * 8 - 6) * k - 6;
+    if (u.i === "desk") {
+      const xr = r.left - sr.left + (u.x * 8 + f.w * 8) * k + 10 + fab.offsetWidth / 2;
+      fab.style.left = Math.round(Math.min(sr.width - fab.offsetWidth / 2 - 6, xr)) + "px";
+      fab.style.top = Math.round(r.top - sr.top + (GO + u.y * 8 + f.h * 4) * k - fab.offsetHeight / 2) + "px";
+      return;
+    }
     fab.style.left = Math.round(Math.min(sr.width - fab.offsetWidth / 2 - 6, Math.max(fab.offsetWidth / 2 + 6, x))) + "px";
-    fab.style.top = Math.round(yt < 40 ? r.top - sr.top + (GO + (u.y + f.h) * 8) * k + 8 : yt - fab.offsetHeight) + "px";
+    const yb = r.top - sr.top + (GO + (u.y + f.h) * 8) * k + 8;
+    fab.style.top = Math.round(yb + fab.offsetHeight > sr.height - 8 ? yt - fab.offsetHeight : yb) + "px";
   };
   const del = (k) => { if (k < 0 || !FU[k]) return; snap(); FU.splice(k, 1); fsel = -1; commit(); };
   const dup = () => { const u = FU[fsel]; if (!u) return; const p = near(u.i, u.x + FC[u.i].w, u.y); if (!p) return; snap(); FU.push({ i: u.i, x: p[0], y: p[1] }); fsel = FU.length - 1; commit(); };
@@ -316,8 +452,10 @@
     if (!p) return;
     if (ftool) {
       const g = ghost();
-      if (g && free(g.i, g.x, g.y, -1)) { snap(); FU.push({ i: g.i, x: g.x, y: g.y }); commit(); }
-      return;
+      if (g && free(g.i, g.x, g.y, -1)) { snap(); if (g.i === "workplace") { FU.push({ i: "desk", x: g.x, y: g.y + 2 }, { i: "chair", x: g.x + 1, y: g.y }); } else FU.push({ i: g.i, x: g.x, y: g.y }); ftool = null; fsel = FU.length - 1; commit(); return; }
+      const hit = pick(p);
+      if (hit < 0) return;
+      ftool = null;
     }
     const k = pick(p);
     fsel = k; fch();
@@ -334,7 +472,7 @@
     fhov = cell(e);
     if (d.n) {
       const g = fhov && { x: fhov.x - d.dx, y: fhov.y - d.dy };
-      if (g && free(d.n, g.x, g.y, -1)) { snap(); FU.push({ i: d.n, x: g.x, y: g.y }); fsel = FU.length - 1; commit(); }
+      if (g && free(d.n, g.x, g.y, -1)) { snap(); if (d.n === "workplace") FU.push({ i: "desk", x: g.x, y: g.y + 2 }, { i: "chair", x: g.x + 1, y: g.y }); else FU.push({ i: d.n, x: g.x, y: g.y }); fsel = FU.length - 1; commit(); }
       document.body.classList.remove("fdg");
       return;
     }
@@ -371,7 +509,7 @@
     room: () => ({ w: GX, h: GY, min: ext() }),
     size: (w, h) => { const [mw, mh] = ext(); w = Math.max(30, mw, Math.min(80, w | 0)); h = Math.max(16, mh, Math.min(40, h | 0)); room(w, h); clearTimeout(rsave); rsave = setTimeout(() => post({ office: { size: { w, h } } }, "/api/set").catch(() => {}), 400); return { w, h }; },
     loadRoom: (z) => { const w = z?.w | 0, h = z?.h | 0; room(w >= 30 && w <= 80 ? w : 50, h >= 16 && h <= 40 ? h : 28); },
-    load: (a) => { FU = Array.isArray(a) ? a.filter((u) => FC[u?.i] && Number.isInteger(u.x) && Number.isInteger(u.y)).map((u) => (u.i === "chair" && typeof u.w === "string" && u.w ? { i: u.i, x: u.x, y: u.y, w: u.w } : { i: u.i, x: u.x, y: u.y })) : []; },
+    load: (a) => { FU = Array.isArray(a) ? a.filter((u) => FC[u?.i] && u.i !== "workplace" && Number.isInteger(u.x) && Number.isInteger(u.y)).map((u) => (u.i === "chair" && typeof u.w === "string" && u.w ? { i: u.i, x: u.x, y: u.y, w: u.w } : { i: u.i, x: u.x, y: u.y })) : []; },
     on: (f) => { fcb = f; },
     tick: fabpos,
   };
@@ -528,12 +666,29 @@
   window.AO.mdn = mdn;
   const XP = ["#c77dba", "#6fa8dc", "#e39b6b", "#7fc8a9", "#b5a3e0", "#e0848f", "#8fb3c9", "#c9b37f"];
   let tkeys = "";
+  const ohint = () => {
+    let h = $("ohint"); let seen = "1"; try { seen = localStorage.getItem("ao.oh") || ""; } catch {}
+    if (seen || document.body.classList.contains("ed") || !(S?.crew || []).length) { if (h) h.hidden = true; return; }
+    if (!h) { h = document.createElement("div"); h.id = "ohint"; h.className = "ohint"; h.innerHTML = `<b>How the office works</b><span>Every worker needs a desk with a chair to work; without a free one they wait. For more desks, open Edit office (top right), pick Workplace and click a free spot. The server racks are your machines, where tests run.</span><div class="acts"><button type="button" data-oe>Open Edit office</button><button type="button" data-ok>Got it</button></div>`; $("stage").appendChild(h); h.querySelector("[data-ok]").onclick = () => { try { localStorage.setItem("ao.oh", "1"); } catch {} h.hidden = true; }; h.querySelector("[data-oe]").onclick = () => { try { localStorage.setItem("ao.oh", "1"); } catch {} h.hidden = true; $("bCz").click(); }; }
+    h.hidden = false;
+  };
+  const deskbar = () => {
+    ohint();
+    let bar = $("deskbar");
+    const wt = (S?.seat?.wait || []).map((id) => (S?.crew || []).find((w) => w.id === id)?.n).filter(Boolean);
+    if (!wt.length || document.body.classList.contains("ed")) { if (bar) bar.hidden = true; return; }
+    if (!bar) { bar = document.createElement("div"); bar.id = "deskbar"; bar.className = "deskbar"; $("stage").appendChild(bar); bar.onclick = (e) => { if (e.target.closest("button")) $("bCz").click(); }; }
+    bar.hidden = false;
+    const txt = `${wt.join(", ")} ${wt.length === 1 ? "needs" : "need"} a workplace (desk with a chair) to work.`;
+    if (bar.dataset.t !== txt) { bar.dataset.t = txt; bar.innerHTML = `<span>${esc(txt)}</span><button type="button">Edit office</button>`; }
+  };
   const tiles0 = () => {
+    deskbar();
     const el = $("tiles");
     const po = window.AO.pord || [], xk = Object.keys(S.w).filter((k) => k.startsWith("x:")).sort((a, b) => (po.indexOf(a.slice(2)) + 99) % 99 - (po.indexOf(b.slice(2)) + 99) % 99);
     xk.forEach((k, i) => { const c = XP[i % XP.length]; SK[k] = { body: c, dark: c, light: c, tx: txc(c) }; NM[k] = S.w[k].nm || k.slice(2); });
     const CP = ["#e39b6b", "#7fc8a9", "#b5a3e0", "#6fa8dc", "#e0848f", "#8fb3c9", "#c77dba", "#c9b37f"];
-    const ck = (S.crew || []).filter((w) => (S.staff || []).includes(w.id)).map((w, i) => { const k = "c:" + w.id; SK[k] = { body: CP[i % CP.length], dark: CP[i % CP.length], light: CP[i % CP.length], tx: txc(CP[i % CP.length]) }; NM[k] = w.n || w.id; return k; });
+    const ck = (S.crew || []).filter((w) => (S.staff || []).includes(w.id) && !w.core).map((w, i) => { const k = "c:" + w.id; SK[k] = { body: CP[i % CP.length], dark: CP[i % CP.length], light: CP[i % CP.length], tx: txc(CP[i % CP.length]) }; NM[k] = w.n || w.id; return k; });
     const all = [...ck, ...ORD, ...xk];
     if (all.join() !== tkeys) { tkeys = all.join(); el.innerHTML = ""; el.style.gridTemplateColumns = all.length > 10 ? "repeat(auto-fill, minmax(124px, 1fr))" : `repeat(${all.length}, minmax(0, 1fr))`; }
     if (!el.children.length) {
@@ -550,16 +705,17 @@
         const id = n.slice(2), cw = (S.crew || []).find((x) => x.id === id) || {}, rs = (S.rn || []).filter((r) => r.st === "run" && r.w === id);
         const ev = (S.ev || []).find((e) => e.w === n);
         const nd = seats().wait.includes(id);
-        if (nd) { t.className = "tile nodesk"; t.style.order = 0; t.querySelector(".md").textContent = ""; t.querySelector(".sy").textContent = "Place a desk with a chair in Edit office"; t.querySelector(".stt").textContent = "No desk"; t.querySelector(".ft").textContent = ""; t.title = "Needs a desk to work"; continue; }
+        if (nd) { t.className = "tile nodesk"; t.style.order = 0; t.querySelector(".md").textContent = ""; t.querySelector(".sy").textContent = ""; t.querySelector(".stt").textContent = "No desk"; t.querySelector(".ft").textContent = ""; t.title = "Needs a desk to work"; continue; }
         t.className = "tile " + (rs.length ? "work" : "");
         t.style.order = rs.length ? 0 : 1;
         t.querySelector(".md").textContent = mdn(cw.md || "");
         t.querySelector(".sy").textContent = rs.length ? rs[0].n : ev ? `${ago(ev.t)} · ${ev.m}` : "…";
-        t.querySelector(".stt").textContent = rs.length ? "Work" + (rs.length > 1 ? " ×" + rs.length : "") : "idle";
+        t.querySelector(".stt").textContent = rs.length ? "working" + (rs.length > 1 ? " ×" + rs.length : "") : "idle";
         t.querySelector(".ft").textContent = "";
-        t.title = (cw.r ? cw.r + " · " : "") + "open Team";
+        t.title = `${NM[n]}: ${rs.length ? "working" : "idle (grey dot)"}. ` + (cw.r ? cw.r + " · " : "") + "Click to open Team.";
         continue;
       }
+      if ((S.seat?.wait || []).includes(n)) { t.className = "tile nodesk"; t.style.order = 0; t.querySelector(".md").textContent = ""; t.querySelector(".sy").textContent = ""; t.querySelector(".stt").textContent = "No desk"; t.querySelector(".ft").textContent = ""; t.title = "Needs a workplace (desk with a chair) to work"; continue; }
       const w = S.w[n] || { st: "idle", say: "", md: "", tk: 0 };
       const { cn, wk } = bstat(n);
       if (n === "architect" && !S.orch && !wk && !w.hold) {
@@ -576,9 +732,9 @@
       t.querySelector(".sy").textContent = w.say || (ev ? `${ago(ev.t)} · ${ev.m}` : "…");
       t.className = "tile " + (wk ? "work" : "") + (w.hold ? " hold" : "");
       t.style.order = w.hold ? 2 : wk ? 0 : 1;
-      t.querySelector(".stt").textContent = w.hold ? "paused" : wk ? "work" + (cn > 1 ? " ×" + cn : "") : w.st === "sleep" ? "sleep" : "idle";
+      t.querySelector(".stt").textContent = w.hold ? "paused" : wk ? "working" + (cn > 1 ? " ×" + cn : "") : w.st === "sleep" ? "asleep" : "idle";
       t.querySelector(".ft").textContent = w.tk ? kt(w.tk) + " tok" : "";
-      t.title = (DESC[n] ? DESC[n] + "\n\n" : "") + (w.hold ? "click to resume" : "click to pause");
+      t.title = `${NM[n]}: ${w.hold ? "paused" : wk ? "working (bright dot)" : "idle (grey dot)"}. ` + (DESC[n] ? DESC[n] + " " : TD[n] ? TD[n] + " · Bug-fix team. " : "") + (w.hold ? "Click to resume." : "Click to pause.");
     }
   };
   // The worker strip scrolls sideways: fade the cut edges and offer "+N" / back buttons.
@@ -610,7 +766,7 @@
   const sel = new Set();
   const QN = { vet: "Checking", ready: "Ready", plan: "Planning", need_user: "Needs your answer", hunt: "Hunting", repro: "Reproducing", fix: "Fixing", design: "Fixing design", test: "Testing the app", ci: "Testing", review: "Reviewing", gate: "Final check", approve: "Waiting for you", submit: "Submitting", done: "Done", drop: "Dropped", park: "Parked" };
   const KN = { hunt: "Hunt", rebase: "Rebase", review: "Review changes", feat: "Feature" };
-  const jrow = (j, x) => `<div class="row jr${j.st === "approve" || j.st === "need_user" ? " apr" : ""}">${j.st === "approve" && x ? `<input type="checkbox" class="bk" data-k="${j.id}" ${sel.has(j.id) ? "checked" : ""} aria-label="select">` : ""}<div class="ti"><a class="a" href="#" data-j="${j.id}">${esc(j.title)}</a><div class="w"><span class="stt st-${esc(j.st)}"${j.st === "need_user" ? ' style="color:var(--info)"' : ""}>${esc((j.kind !== "fix" ? (KN[j.kind] || j.kind) + " · " : "") + (QN[j.st] || j.st))}</span><span>${esc(rn(j))}</span>${(j.st === "ci" && S.cil[j.id]) || j.why ? `<span class="wy">${esc(j.st === "ci" && S.cil[j.id] ? S.cil[j.id] : j.why)}</span>` : ""}</div></div><span class="rp">${j.st === "approve" ? `<button class="go" data-j="${j.id}">Review</button>` : ""}${j.st === "need_user" ? `<button class="go" data-j="${j.id}">Reply</button>` : ""}${x && j.st !== "approve" ? `<button class="x" data-d="${j.id}" title="Drop" aria-label="Drop"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>` : ""}${!x && j.st === "drop" && ["fix", "build", "design_fix", "test_app", "architect", "epic_pr"].includes(j.kind) ? `<button class="x" data-rq="${j.id}" title="Try again" aria-label="Try again"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6M4 4v4.6h4.6"/></svg></button>` : ""}</span></div>`;
+  const jrow = (j, x) => `<div class="row jr${j.st === "approve" || j.st === "need_user" ? " apr" : ""}">${j.st === "approve" && x ? `<input type="checkbox" class="bk" data-k="${j.id}" ${sel.has(j.id) ? "checked" : ""} aria-label="select">` : ""}<div class="ti"><a class="a" href="#" data-j="${j.id}">${esc(j.title)}</a><div class="w"><span class="stt st-${esc(j.st)}"${j.st === "need_user" ? ' style="color:var(--info)"' : ""}>${esc((j.kind !== "fix" ? (KN[j.kind] || j.kind) + " · " : "") + (QN[j.st] || j.st))}</span><span>${esc(rn(j))}</span>${(j.st === "ci" && S.cil[j.id]) || j.why ? `<span class="wy">${esc(j.st === "ci" && S.cil[j.id] ? S.cil[j.id] : j.why)}</span>` : ""}</div></div><span class="rp">${j.st === "approve" ? `<button class="go" data-j="${j.id}">Review</button>` : ""}${j.st === "need_user" ? `<button class="go" data-j="${j.id}">Reply</button>` : ""}${x && j.st !== "approve" ? `<button class="x" data-d="${j.id}" title="Drop this job (you can undo it)" aria-label="Drop this job"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>` : ""}${!x && j.st === "drop" && ["fix", "build", "design_fix", "test_app", "architect", "epic_pr"].includes(j.kind) ? `<button class="x" data-rq="${j.id}" title="Try again" aria-label="Try again"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6M4 4v4.6h4.6"/></svg></button>` : ""}</span></div>`;
 
   let lW = "", lQ = "", lWrap = false, lastLog = "";
   try { lWrap = localStorage.getItem("ao.lw") === "1"; } catch {}
@@ -621,7 +777,7 @@
     const first = !sw.dataset.inited;
     sw.dataset.inited = lk + "|";
     (S?.crew || []).forEach((w) => { NM["c:" + w.id] = w.n || w.id; });
-    sw.innerHTML = `<option value="">All workers</option>` + [...(S?.crew || []).map((w) => "c:" + w.id), "pipe", ...ORD, ...Object.keys(S?.w || {}).filter((k) => k.startsWith("x:"))].map((w) => `<option value="${w}">${esc(NM[w] || w)}</option>`).join("");
+    sw.innerHTML = `<option value="">All workers</option>` + [...(S?.crew || []).filter((w) => !w.core).map((w) => "c:" + w.id), "pipe", ...ORD, ...Object.keys(S?.w || {}).filter((k) => k.startsWith("x:"))].map((w) => `<option value="${w}">${esc(NM[w] || w)}</option>`).join("");
     sw.value = lW;
     if (!first) return;
     wb.classList.toggle("on", lWrap);
@@ -644,15 +800,17 @@
   };
 
   const RQN = { queued: "Queued", run: "Running", wait: "Waiting for you" };
-  const rrow = (r) => { const w = (S.crew || []).find((x) => x.id === r.w); return `<div class="row jr${r.st === "wait" ? " apr" : ""}"><div class="ti"><a class="a" href="#" data-run="${r.id}">${esc(r.st === "wait" && r.ask ? r.ask : r.n || r.flow)}</a><div class="w"><span class="stt rs-${esc(r.blk ? "fail" : r.st)}">${esc(r.blk ? "Needs a desk" : RQN[r.st] || r.st)}</span><span>${esc(r.blk ? r.blk : r.st === "wait" && r.ask ? r.n || r.flow : w ? (r.nt === "check" ? w.n + " checks" : w.n + " works") : "Pipeline")}</span><span>run ${r.id}</span></div></div><span class="rp">${r.st === "wait" ? `<button class="go" data-ry="${r.id}">Yes</button><button data-rn="${r.id}">No</button>` : r.blk ? `<button data-desk="1">Edit office</button>` : ""}</span></div>`; };
+  const rrow = (r) => { const w = (S.crew || []).find((x) => x.id === r.w); return `<div class="row jr${r.st === "wait" ? " apr" : ""}"><div class="ti"><a class="a" href="#" data-run="${r.id}">${esc(r.st === "wait" && r.ask ? r.ask : r.n || r.flow)}</a><div class="w"><span class="stt rs-${esc(r.blk ? "fail" : r.st)}">${esc(r.blk ? "Needs a desk" : RQN[r.st] || r.st)}</span><span>${esc(r.blk ? r.blk : r.st === "wait" && r.ask ? r.n || r.flow : w ? (r.nt === "check" ? w.n + " checks" : w.n + " works") : "Pipeline")}</span><span>${r.more ? `run ${r.id} and ${r.more} more` : `run ${r.id}`}${r.skip ? ` · ${r.skip} ${r.skip === 1 ? "start" : "starts"} skipped` : ""}${r.t0 ? ` · ${ago(r.t0)}` : ""}</span></div></div><span class="rp">${r.st === "wait" ? `<button data-run="${r.id}" title="See what the run did before you answer">Review</button><button class="go" data-ry="${r.id}">Yes</button><button data-rn="${r.id}">No</button>` : r.blk ? `<button data-desk="1">Edit office</button>` : ""}</span></div>`; };
   const lists = () => {
     const q = S.q, rx = S.rn || [];
-    $("qn").textContent = [q.length ? q.length + (q.length === 1 ? " job" : " jobs") : "", rx.length ? rx.length + (rx.length === 1 ? " run" : " runs") : ""].filter(Boolean).join(" · ");
+    $("qn").textContent = [q.length ? q.length + (q.length === 1 ? " open job" : " open jobs") : "", rx.length ? rx.length + (rx.length === 1 ? " run" : " runs") : ""].filter(Boolean).join(" · ");
     const aps = q.filter((j) => j.st === "approve").map((j) => j.id);
     for (const k of [...sel]) if (!aps.includes(k)) sel.delete(k);
     const bk = aps.length > 1 ? `<div class="bkb"><label class="ck"><input type="checkbox" id="bkA" ${sel.size === aps.length ? "checked" : ""}> all ${aps.length}</label><span class="sp"></span>${sel.size ? `<button class="go" id="bkS">submit ${sel.size}</button><button class="dng" id="bkD">drop ${sel.size}</button>` : `<span class="k">select pull requests to submit together</span>`}</div>` : "";
-    const rs = [...rx].sort((a, b) => (a.st === "wait" ? 0 : a.st === "run" ? 1 : 2) - (b.st === "wait" ? 0 : b.st === "run" ? 1 : 2));
-    $("queue").innerHTML = bk + rs.map(rrow).join("") + (q.length ? [...q].sort((a, b) => (b.st === "need_user") - (a.st === "need_user")).slice(0, 16).map((j) => jrow(j, true)).join("") : rs.length ? "" : `<div class="empty">Nothing waiting.</div>`) + (S.dn.length ? `<div class="sub">Recent</div>` + S.dn.slice(0, 12).map((j) => jrow(j, false)).join("") : "");
+    const bw = new Set();
+    const rs = [...rx].filter((r) => { if (!r.blk || !r.w) return true; if (bw.has(r.w)) return false; bw.add(r.w); return true; }).map((r) => r.blk && r.w ? { ...r, more: rx.filter((x) => x.blk && x.w === r.w).length - 1 } : r).sort((a, b) => (a.st === "wait" ? 0 : a.st === "run" ? 1 : 2) - (b.st === "wait" ? 0 : b.st === "run" ? 1 : 2));
+    const nw = rs.filter((r) => r.st === "wait"), rest = rs.filter((r) => r.st !== "wait"), nj = q.filter((j) => j.st === "need_user" || j.st === "approve");
+    $("queue").innerHTML = (nw.length || nj.length ? `<div class="sub">Needs you</div>` : "") + bk + nw.map(rrow).join("") + nj.sort((a, b) => (b.st === "need_user") - (a.st === "need_user")).map((j) => jrow(j, true)).join("") + (nw.length || nj.length ? `<div class="sub">Working and waiting</div>` : "") + rest.map(rrow).join("") + (q.length ? q.filter((j) => j.st !== "approve" && j.st !== "need_user").slice(0, 16).map((j) => jrow(j, true)).join("") : rs.length ? "" : `<div class="empty">Nothing waiting.</div>`) + (S.dn.length ? `<div class="sub">Recent</div>` + S.dn.slice(0, 12).map((j) => jrow(j, false)).join("") : "");
     const op = S.pr.filter((p) => p.st === "open").length, mg = S.pr.filter((p) => p.st === "merged").length;
     $("prn").textContent = `${op} open · ${mg} merged`;
     $("prs").innerHTML = S.pr.length ? S.pr.slice(0, 16).map((p) => `<div class="row jr"><div class="ti"><a class="a" href="#" data-u="${esc(p.url)}">${esc(p.title)}</a><div class="w"><span class="stt pr-${esc(p.st)}">${esc(p.st[0].toUpperCase() + p.st.slice(1))}</span><span>${esc(rn({ repo: p.repo, num: p.num }))}</span></div></div></div>`).join("") : `<div class="empty">No pull requests yet.</div>`;
@@ -671,10 +829,11 @@
     else if (o.pause) { n.className = "chip bad"; n.textContent = o.pause; }
     else if (o.warn) { n.className = "chip bad"; n.textContent = "Claude usage near its limit"; }
     else { n.className = "chip ok"; n.textContent = "online"; }
-    $("cHo").innerHTML = (S.hs || []).filter((h) => h.on_).map((h) => `<b style="color:${o.net[h.id] === false ? "var(--bad)" : "var(--t1)"}">${esc(h.id)}</b>`).join(" ") || "no machine";
+    $("cHo").title = "Your machines: white is online, red is offline. Manage them under Machines.";
+    $("cHo").innerHTML = `<span class="chl">Machines</span> ` + ((S.hs || []).filter((h) => h.on_).map((h) => `<b style="color:${o.net[h.id] === false ? "var(--bad)" : "var(--t1)"}">${esc(h.id)}</b>`).join(" ") || "none");
     const a = S.n, rx = S.rn || [], cn = (st) => rx.filter((r) => r.st === st).length;
     const wk = ["plan", "hunt", "repro", "fix", "design", "test", "ci", "review", "gate", "submit"].reduce((s, k) => s + (a[k] || 0), 0);
-    $("cQ").innerHTML = `running <b>${wk + cn("run")}</b> · waiting for you <b>${(a.approve || 0) + (a.need_user || 0) + cn("wait")}</b> · queued <b>${(a.vet || 0) + (a.ready || 0) + cn("queued")}</b> · done <b>${a.done || 0}</b>`;
+    $("cQ").innerHTML = `running <b>${wk + cn("run")}</b> · <a href="#/jobs" class="wfy" title="Open what waits for your answer">waiting for you <b>${(a.approve || 0) + (a.need_user || 0) + cn("wait")}</b></a> · queued <b>${(a.vet || 0) + (a.ready || 0) + cn("queued")}</b> · done <b>${a.done || 0}</b>`;
     $("bPause").textContent = o.man ? "Resume office" : "Pause office";
     $("ban").hidden = !S.star;
     document.body.classList.toggle("sb", !!S.star);
@@ -696,7 +855,7 @@
     }
     seen = ids;
   };
-  const apply = (s) => { if (!s || s.error) return; nt(s); S = s; last = performance.now(); err = 0; const fe = document.body.classList.contains("fed"); if (!fe) { tiles(); lists(); } chips(); tip(); window.AO.S = s; window.AO.onState && window.AO.onState(s); };
+  const apply = (s) => { if (!s || s.error) return; nt(s); for (const r of s.rn || []) { const pv = RW[r.id]; if (r.w && pv && pv !== r.w) LF.push({ a: pv, b: r.w, t: s.t }); if (r.w) RW[r.id] = r.w; } S = s; last = performance.now(); err = 0; const fe = document.body.classList.contains("fed"); if (!fe) { tiles(); lists(); } chips(); tip(); window.AO.S = s; window.AO.onState && window.AO.onState(s); };
   window.AO.apply = apply;
 
   document.addEventListener("change", (e) => {
@@ -706,7 +865,7 @@
   document.addEventListener("click", async (e) => {
     if (e.target.id === "bkS" || e.target.id === "bkD") {
       const b = e.target, dr = b.id === "bkD";
-      if (dr && b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "click again to drop " + sel.size; return; }
+      if (dr && !(await window.AO.danger({ title: `Drop ${sel.size} finished ${sel.size === 1 ? "fix" : "fixes"}?`, items: ["Their fixes and proofs are discarded; no pull requests are opened."], ok: `Drop ${sel.size}` }))) return;
       b.disabled = true;
       const ids = [...sel];
       let r = null;
@@ -718,9 +877,25 @@
     const a = e.target.closest("[data-u]");
     if (a) { e.preventDefault(); open(a.dataset.u); return; }
     const d = e.target.closest("[data-d]");
-    if (d) { post({ a: "drop", id: Number(d.dataset.d) }).then(apply); return; }
+    if (d) {
+      const id = Number(d.dataset.d), j = (S.q || []).find((x) => x.id === id) || (d.dataset.dk ? { kind: d.dataset.dk, st: d.dataset.ds } : null), A = window.AO;
+      (async () => {
+        if (j && j.kind === "fix" && j.st !== "approve") {
+          apply(await post({ a: "drop", id }));
+          A.tryHide && A.tryHide();
+          A.undo(`Job #${id} dropped`, async () => apply(await post({ a: "requeue", id })));
+          return;
+        }
+        if (!(await A.danger({ title: `Drop job #${id}?`, items: [j && j.st === "approve" ? "The finished fix and its proof are discarded; no pull request is opened." : "The work on it stops and it leaves the queue.", "It stays in the history as dropped."], ok: "Drop job" }))) return;
+        apply(await post({ a: "drop", id }));
+        A.tryHide && A.tryHide();
+      })();
+      return;
+    }
     const rq = e.target.closest("[data-rq]");
     if (rq) { post({ a: "requeue", id: Number(rq.dataset.rq) }).then(apply); return; }
+    const wf = e.target.closest(".wfy");
+    if (wf) { e.preventDefault(); const rw = (S.rn || []).some((r) => r.st === "wait"); try { localStorage.setItem("ao.wt", rw ? "runs" : "jobs"); } catch {} window.AO.runFilter = rw ? "wait" : ""; window.AO.go("jobs"); return; }
     const ry = e.target.closest("[data-ry],[data-rn]");
     if (ry && ry.closest("#queue")) { const id = ry.dataset.ry || ry.dataset.rn; fetch(`/api/v2/runs/${id}/answer`, { method: "POST", headers: { "content-type": "application/json", "x-ao": "1" }, body: JSON.stringify({ yes: !!ry.dataset.ry }) }).then(() => get("/api/state")).then(apply); return; }
     const dk = e.target.closest("[data-desk]");
@@ -744,7 +919,8 @@
     el.hidden = false;
     el.className = "chip hc" + (bad.length ? " bad" : "");
     el.innerHTML = HK.map(([k, l]) => `<i class="${H[k]?.ok ? "" : "no"}" title="${l}"></i>`).join("") + (bad.length ? " " + bad.map(([, l]) => l).join(", ") : "");
-    el.title = bad.length ? "problems: " + bad.map(([, l]) => l).join(", ") : "everything ok";
+    el.title = bad.length ? "Health: problem with " + bad.map(([, l]) => l).join(", ") + ". Click for details." : "Health: GitHub, AI, Docker and machines are all fine. Click for details.";
+    el.setAttribute("aria-label", el.title);
     window.AO.H = H;
     return H;
   };
@@ -775,6 +951,7 @@
       + (q ? `<div class="tf">click to open the job</div>` : "");
   };
   const ptip = (h) => {
+    if (core(h.p)) return wtip({ n: h.p });
     const w = (S.crew || []).find((x) => x.id === h.p) || {}, rs = (S.rn || []).filter((r) => r.w === h.p), k = "c:" + h.p;
     const sit = seats().ids.has(h.p);
     const cs = S.ev.filter((e) => e.w === k).slice(0, 3);

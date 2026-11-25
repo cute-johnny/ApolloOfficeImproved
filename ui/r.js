@@ -1,6 +1,6 @@
 (() => {
   const A = window.AO, { $ } = A;
-  const T = { office: "Office", pipelines: "Pipelines", team: "Team", jobs: "Work", prs: "Pull requests", repos: "Repositories", machines: "Machines", costs: "Costs", settings: "Settings", health: "Health" };
+  const T = { office: "Office", pipelines: "Pipelines", team: "Team", jobs: "Jobs & runs", prs: "Pull requests", repos: "Repositories", machines: "Machines", costs: "Costs", settings: "Settings", health: "Health" };
   const RUN = { repos: () => A.repos(), machines: () => A.hosts(), costs: () => A.costs(), settings: () => A.settings(), health: () => A.health(), team: () => A.team(), jobs: () => A.jobs(), prs: () => A.prs() };
   const B = document.body;
   let busy = false;
@@ -15,7 +15,7 @@
     try {
       const n = (location.hash.match(/^#\/([a-z]+)/) || [])[1] || "office", r = T[n] ? n : "office";
       await leave(r);
-      if (!$("dr").hidden) $("drX").click();
+      if (!$("dr").hidden) A.tryHide ? await A.tryHide() : $("drX").click();
       const pg = r !== "office" && r !== "pipelines";
       B.classList.toggle("vof", r === "office");
       B.classList.toggle("pgm", pg);
@@ -28,6 +28,54 @@
       if (RUN[r]) await RUN[r]();
       window.dispatchEvent(new Event("resize"));
     } finally { busy = false; }
+  };
+  A.ask = (title, val, ok = "Create") => new Promise((res) => {
+    const M = document.createElement("div");
+    M.className = "cmdk askd";
+    M.innerHTML = `<form class="kb ak" role="dialog" aria-label="${A.esc(title)}"><b>${A.esc(title)}</b><input type="text" maxlength="60" value="${A.esc(val || "")}"><div class="acts"><span class="sp"></span><button type="button" data-x>Cancel</button><button class="go">${A.esc(ok)}</button></div></form>`;
+    B.appendChild(M);
+    const i = M.querySelector("input"), done = (v) => { M.remove(); res(v); };
+    i.focus(); i.select();
+    M.querySelector("form").onsubmit = (e) => { e.preventDefault(); done(i.value.trim()); };
+    M.querySelector("[data-x]").onclick = () => done(null);
+    M.onclick = (e) => { if (e.target === M) done(null); };
+    M.onkeydown = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(null); } };
+  });
+  A.confirm = (title, ok = "Continue", alt = "") => new Promise((res) => {
+    const M = document.createElement("div");
+    M.className = "cmdk askd";
+    M.innerHTML = `<div class="kb ak" role="alertdialog" aria-label="${A.esc(title)}"><p>${A.esc(title)}</p><div class="acts">${alt ? `<button type="button" data-alt>${A.esc(alt)}</button>` : ""}<span class="sp"></span><button type="button" data-x>Cancel</button><button type="button" class="go" data-ok>${A.esc(ok)}</button></div></div>`;
+    B.appendChild(M);
+    const done = (v) => { M.remove(); res(v); };
+    M.querySelector("[data-ok]").onclick = () => done(true);
+    M.querySelector("[data-x]").onclick = () => done(false);
+    const al = M.querySelector("[data-alt]"); if (al) al.onclick = () => done("alt");
+    M.onclick = (e) => { if (e.target === M) done(false); };
+    M.onkeydown = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(false); } };
+    M.querySelector("[data-x]").focus();
+  });
+  A.danger = ({ title, items = [], ok = "Delete", type = "" }) => new Promise((res) => {
+    const M = document.createElement("div");
+    M.className = "cmdk askd";
+    M.innerHTML = `<div class="kb ak dgr" role="alertdialog" aria-label="${A.esc(title)}"><b>${A.esc(title)}</b>${items.length ? `<ul>${items.map((x) => `<li>${A.esc(x)}</li>`).join("")}</ul>` : ""}${type ? `<label class="dtp"><span>Type <code>${A.esc(type)}</code> to confirm</span><input type="text" autocomplete="off" spellcheck="false"></label>` : ""}<div class="acts"><span class="sp"></span><button type="button" data-x>Cancel</button><button type="button" class="dng solid" data-ok ${type ? "disabled" : ""}>${A.esc(ok)}</button></div></div>`;
+    B.appendChild(M);
+    const okb = M.querySelector("[data-ok]"), inp = M.querySelector(".dtp input"), done = (v) => { M.remove(); res(v); };
+    if (inp) inp.oninput = () => { okb.disabled = inp.value.trim() !== type; };
+    okb.onclick = () => { if (!okb.disabled) done(true); };
+    M.querySelector("[data-x]").onclick = () => done(false);
+    M.onclick = (e) => { if (e.target === M) done(false); };
+    M.onkeydown = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(false); } if (e.key === "Enter" && inp && document.activeElement === inp && !okb.disabled) { e.preventDefault(); done(true); } };
+    (inp || M.querySelector("[data-x]")).focus();
+  });
+  let UT = 0;
+  A.undo = (msg, fn, ms = 7000) => {
+    let u = $("undoBar");
+    if (!u) { u = document.createElement("div"); u.id = "undoBar"; u.className = "undob"; u.setAttribute("role", "status"); B.appendChild(u); }
+    clearTimeout(UT);
+    u.innerHTML = `<span>${A.esc(msg)}</span><button type="button">Undo</button>`;
+    u.hidden = false;
+    u.querySelector("button").onclick = () => { clearTimeout(UT); u.hidden = true; fn && fn(); };
+    UT = setTimeout(() => { u.hidden = true; }, ms);
   };
   A.go = (r) => { if (location.hash === "#/" + r) go(); else location.hash = "#/" + r; };
   A.route = () => ((location.hash.match(/^#\/([a-z]+)/) || [])[1] || "office");
@@ -43,7 +91,7 @@
   A.onState = (s) => {
     prev && prev(s);
     const act = s.q.filter((q) => !["park", "vet"].includes(q.st)).length + (s.rn || []).filter((r) => r.st !== "wait").length, ap = s.q.filter((q) => q.st === "approve").length + (s.rw || 0);
-    const nj = $("nJobs"); nj.textContent = ap ? ap : act || ""; nj.classList.toggle("hot", ap > 0); nj.title = ap ? `${ap} waiting for your approval` : `${act} active jobs and runs`;
+    const nj = $("nJobs"); nj.textContent = ap || ""; nj.classList.toggle("hot", ap > 0); nj.title = ap ? `${ap} waiting for your answer` : "";
     const op = s.pr.filter((p) => p.st === "open").length; $("nPr").textContent = op || "";
     A.wdg && A.wdg(s);
   };

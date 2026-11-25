@@ -157,8 +157,9 @@ fn state(a: &Ax) -> Value {
         "pr": a.db.all("select repo,num,st,title,url,upd,merged from prs order by t0 desc limit 40", pa![]),
         "rw": a.db.n("select count(*) from runs where st='wait'", pa![]),
         "rn": crate::eng::active(a),
-        "crew": a.db.kg("crew").as_array().map(|c| c.iter().map(|w| json!({"id": w["id"], "n": w["n"], "r": w["r"], "md": w["md"]})).collect::<Vec<_>>()).unwrap_or_default(),
+        "crew": crate::flows::core_crew(a).into_iter().chain(a.db.kg("crew").as_array().cloned().unwrap_or_default()).map(|w| json!({"id": w["id"], "n": w["n"], "r": w["r"], "md": w["md"], "core": w["core"] == true})).collect::<Vec<_>>(),
         "staff": crate::eng::staff(a),
+        "seat": crate::eng::seat_view(a),
         "mg": a.db.all("select substr(merged,1,10) day, count(*) n from prs where merged is not null and merged >= date('now','-30 day') group by 1 order by 1", pa![]),
         "ev": a.db.all("select t,w,m,j from ev order by id desc limit 120", pa![]),
         "n": Value::Object(a.db.all("select st, count(*) n from jobs group by st", pa![]).into_iter().map(|x| (x["st"].as_str().unwrap_or("").to_string(), x["n"].clone())).collect()),
@@ -266,12 +267,14 @@ fn rst(a: &Ax, r: &str) -> Value {
     let is = a.db.n("select count(*) from jobs where repo=? and num>0 and kind='fix' and t0>?", pa![r.to_string(), t]);
     let ik = a.db.n("select count(*) from jobs j join prs p on p.repo=j.repo and p.num=j.pr where j.repo=? and j.num>0 and j.kind='fix' and j.t0>?", pa![r.to_string(), t]);
     let q = a.db.n("select count(*) from jobs where repo=? and st in ('vet','ready')", pa![r.to_string()]);
-    let usd = a.db.one("select sum(usd) u from cost where repo=? and t>?", pa![r.to_string(), t]).map(|x| x["u"].as_f64().unwrap_or(0.0)).unwrap_or(0.0);
+    let cu = a.db.one("select sum(case when sub=0 then usd end) u, sum(case when sub=1 then usd end) v from cost where repo=? and t>?", pa![r.to_string(), t]);
+    let usd = cu.as_ref().and_then(|x| x["u"].as_f64()).unwrap_or(0.0);
+    let val = cu.as_ref().and_then(|x| x["v"].as_f64()).unwrap_or(0.0);
     let mut dr = json!({"done": a.db.n("select count(*) from jobs where repo=? and kind='fix' and st='done' and t0>?", pa![r.to_string(), t])});
     for x in a.db.all("select case when why like 'Vet%' then 'vet' when why like 'Guard:%' then 'guard' when why like 'error:%' then 'host' when why like 'not reproducible%' then 'repro' when why like 'PR already exists%' or why like 'someone was faster%' or why like 'assigned to%' or why like 'PR is no longer open%' then 'late' when why='dropped by the owner' then 'own' else 'fix' end k, count(*) n from jobs where repo=? and kind='fix' and st='drop' and t0>? group by k", pa![r.to_string(), t]) {
         dr[x["k"].as_str().unwrap_or("fix")] = x["n"].clone();
     }
-    json!({"dr": dr, "m14": m14, "op": o["op"], "old": o["old"], "is": is, "ik": ik, "q": q, "usd": usd, "hy": crate::pipe::hy(a, r), "iv": crate::wk::ivl(a, r) / 60_000, "red": !a.db.kg(&format!("cired:{r}")).is_null()})
+    json!({"dr": dr, "m14": m14, "op": o["op"], "old": o["old"], "is": is, "ik": ik, "q": q, "usd": usd, "val": val, "hy": crate::pipe::hy(a, r), "iv": crate::wk::ivl(a, r) / 60_000, "red": !a.db.kg(&format!("cired:{r}")).is_null()})
 }
 
 fn costs(a: &Ax) -> Value {
@@ -348,7 +351,7 @@ fn sets(a: &Ax, b: &Value) {
         s["office"]["size"] = json!({"w": w.clamp(30, 80), "h": h.clamp(16, 40)});
     }
     if let Some(it) = b["office"]["items"].as_array() {
-        let ok = ["desk", "chair", "plant", "rack", "sofa", "table", "shelf", "coffee", "cooler", "lamp", "rug"];
+        let ok = ["desk", "chair", "plant", "rack", "sofa", "table", "shelf", "coffee", "cooler", "lamp", "rug", "board", "radio"];
         let v: Vec<Value> = it.iter().filter(|u| ok.contains(&u["i"].as_str().unwrap_or("")) && (0..80).contains(&u["x"].as_i64().unwrap_or(-1)) && (0..40).contains(&u["y"].as_i64().unwrap_or(-1))).take(400).map(|u| { let mut o = json!({"i": u["i"], "x": u["x"], "y": u["y"]}); if let Some(w) = u["w"].as_str().filter(|w| u["i"] == "chair" && !w.is_empty() && w.len() <= 60) { o["w"] = json!(w); } o }).collect();
         s["office"]["items"] = json!(v);
     }

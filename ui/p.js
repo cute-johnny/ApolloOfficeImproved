@@ -21,9 +21,14 @@
     clearTimeout(dto);
     dto = setTimeout(() => { dr.hidden = true; dr.classList.remove("out"); }, 170);
   };
-  $("drX").onclick = hide;
-  dr.onclick = (e) => { if (e.target === dr) hide(); };
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !dr.hidden) hide(); });
+  const tryHide = async () => {
+    if ($("drB").querySelector("form[data-dirty='1']") && A.confirm && !(await A.confirm("You have unsaved changes. Close and discard them?", "Discard"))) return;
+    hide();
+  };
+  A.tryHide = tryHide;
+  $("drX").onclick = tryHide;
+  dr.onclick = (e) => { if (e.target === dr) tryHide(); };
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !dr.hidden && !document.querySelector(".askd")) tryHide(); });
 
   const yes = (v) => v === 1 || v === true;
   const tg = (n, v, l) => `<label class="ck"><input type="checkbox" name="${n}" ${yes(v) ? "checked" : ""}> ${l}</label>`;
@@ -119,13 +124,13 @@
     const D = B, x = r.st || {};
     D.innerHTML = `<form class="rfm" data-r="${esc(r.full)}">
       ${r.ci ? "" : `<div class="warn">No test command found. Enter the command that runs this repository's tests, otherwise nothing happens here.</div>`}
-      <div class="kp">${[[x.m14 ?? 0, "merged, 14 d", "ok2"], [x.op ?? 0, "open"], [x.old ?? 0, "open > 7 d", x.old ? "bad2" : ""], [x.q ?? 0, "queued"], [usd(x.usd || 0), "cost, 14 d"]].map(([v, l, c]) => `<div><b class="${c || ""}">${v}</b><span>${l}</span></div>`).join("")}</div>
+      <div class="kp">${[[x.m14 ?? 0, "merged, 14 d", "ok2"], [x.op ?? 0, "open"], [x.old ?? 0, "open > 7 d", x.old ? "bad2" : ""], [x.q ?? 0, "queued"], [usd(x.usd || 0), "paid, 14 d"], [usd(x.val || 0), "login value, 14 d"]].map(([v, l, c]) => `<div><b class="${c || ""}">${v}</b><span>${l}</span></div>`).join("")}</div>
       ${fun(r)}
       <div class="sec"><h4>Work</h4><div class="box"><div class="fm">
         <label>Status</label>${tg("on_", r.on_, "active")}
         <label>Work on</label><div class="acts">${tg("iss", r.iss, "open issues")}${tg("hunt", r.hunt, "hunt for bugs itself")}${tg("feat", r.feat, "build requested features")}</div>
         <label>Skip labels</label><input type="text" name="skl" value="${esc(r.skl || "")}" placeholder="e.g. area:kernel, needs-design">
-        <label>Pull requests</label><select name="mode"><option value="ask" ${r.mode !== "auto" ? "selected" : ""}>wait for my approval</option><option value="auto" ${r.mode === "auto" ? "selected" : ""}>submit automatically</option></select>
+        <label>Pull requests</label><select name="mode"><option value="ask" ${r.mode !== "auto" ? "selected" : ""}>Wait for my approval</option><option value="auto" ${r.mode === "auto" ? "selected" : ""}>Submit automatically</option></select>
         <label>PR footer</label>${tg("nm", r.nm ?? 1, "mention ApolloOffice with a link")}
       </div></div></div>
       <div class="sec"><h4>Build</h4><div class="box"><div class="fm">
@@ -140,7 +145,10 @@
       <div class="sec"><h4>Your rules</h4><textarea name="rules" placeholder="optional, e.g. never touch the plugin API">${esc(r.rules)}</textarea></div>
       <div class="sbar"><button class="pri" data-op="set" disabled>All changes saved</button><button type="button" data-op="detect">Detect test command</button><span class="msg"></span><span class="sp"></span><button type="button" class="dng" data-op="del">Remove</button></div></form>`;
     const f = D.querySelector("form"), sb = f.querySelector('[data-op="set"]'), m = f.querySelector(".msg");
-    const dirty = () => { sb.disabled = false; sb.textContent = "Save changes"; m.textContent = ""; };
+    const dirty = () => { f.dataset.dirty = "1"; sb.disabled = false; sb.textContent = "Save changes"; m.className = "msg"; m.textContent = "Saving when you leave the field"; const w = f.querySelector(".warn"); if (w) w.hidden = !!f.ci.value.trim(); };
+    f.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.tagName === "INPUT" && !sb.disabled) { e.preventDefault(); sb.click(); } });
+    let at = 0;
+    f.addEventListener("change", () => { clearTimeout(at); at = setTimeout(() => { if (!sb.disabled && f.isConnected) sb.click(); }, 500); });
     f.addEventListener("input", dirty);
     f.addEventListener("change", dirty);
     f.onsubmit = (e) => e.preventDefault();
@@ -150,7 +158,7 @@
       e.preventDefault();
       const op = b.dataset.op;
       if (op === "del") {
-        if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Click again to remove"; return; }
+        if (!(await A.danger({ title: `Remove ${full} from the office?`, items: ["Its settings, test command, limits and rules are deleted.", "Open jobs for it are dropped. Pull requests on GitHub stay open.", "You can add it again later, but you set it up again from scratch."], ok: "Remove repository" }))) return;
         await post({ op: "del", full }, "/api/repo");
         hide();
         return repos();
@@ -167,6 +175,7 @@
       const r2 = await post({ op: "set", full, ...fv(f) }, "/api/repo");
       if (r2.error) { busy(b, false, "Save changes"); m.className = "msg bad2"; m.textContent = r2.error; return; }
       busy(b, true, "All changes saved");
+      f.dataset.dirty = "";
       m.className = "msg"; m.textContent = "";
       await repos();
       rdet(full);
@@ -181,12 +190,12 @@
     const sum = (k) => rs.reduce((s, r) => s + ((r.st || {})[k] || 0), 0);
     const flags = (r) => { const x = r.st || {}, c = []; if (!yes(r.on_)) c.push(`<i>Paused</i>`); if (!r.ci) c.push(`<i class="bad2">No test command</i>`); if (x.red) c.push(`<i class="bad2">Main is red</i>`); return c.join(""); };
     const work = (r) => { const x = r.st || {}; return [yes(r.iss) && (x.iv > 0 ? `Issues, every ${x.iv >= 60 ? x.iv / 60 + " h" : x.iv + " min"}` : "Issues"), yes(r.hunt) && "Bug hunting", yes(r.feat) && "Features"].filter(Boolean).join(", ") || `<span class="t2">Off</span>`; };
-    const row = (r) => { const x = r.st || {}, [o, n] = r.full.includes("/") ? r.full.split("/") : ["", r.full]; return `<tr data-r="${esc(r.full)}" class="${yes(r.on_) ? "" : "dim"}"><td><b>${esc(n)}</b><span class="mut">${esc(o)}${flags(r) ? " · " : ""}${flags(r)}</span></td><td>${work(r)}</td><td>${r.mode === "auto" ? "Automatic" : "Ask me"}</td><td>${pl(r.full) || `<span class="t2">–</span>`}</td><td class="n">${x.m14 || 0}</td><td class="n">${x.op || 0}</td><td class="n">${x.old ? `<span class="bad2">${x.old}</span>` : `<span class="t2">0</span>`}</td><td class="n">${x.q || 0}</td><td class="n">${usd(x.usd || 0)}</td></tr>`; };
+    const row = (r) => { const x = r.st || {}, [o, n] = r.full.includes("/") ? r.full.split("/") : ["", r.full]; return `<tr data-r="${esc(r.full)}" class="${yes(r.on_) ? "" : "dim"}"><td><b>${esc(n)}</b><span class="mut">${esc(o)}${flags(r) ? " · " : ""}${flags(r)}</span></td><td>${work(r)}</td><td title="${r.mode === "auto" ? "Pull requests are opened without asking you" : "Each pull request waits for your approval"}">${r.mode === "auto" ? "Submit automatically" : "Wait for my approval"}</td><td>${pl(r.full) || `<span class="t2">–</span>`}</td><td class="n">${x.m14 || 0}</td><td class="n">${x.op || 0}</td><td class="n" title="Open pull requests without a merge for more than 7 days">${x.old ? `<span class="bad2">${x.old}</span>` : `<span class="t2">0</span>`}</td><td class="n">${x.q || 0}</td><td class="n" title="${usd(x.val || 0)} login value, not billed">${usd(x.usd || 0)}</td></tr>`; };
     P0.innerHTML = ph(`${rs.filter((r) => yes(r.on_)).length} of ${rs.length} active. Click a repository to change what the office does there.`, `<form id="fa" class="inl"><input type="text" name="full" placeholder="owner/name or GitHub link" aria-label="Repository to add"><button class="go">Add repository</button></form>`)
       + `<div class="msg" id="am"></div>`
       + `<form id="fc" class="inl" style="margin:0 0 12px"><input type="text" name="name" placeholder="Or create a new GitHub repo: my-new-app" aria-label="New repository name"><select name="vis" aria-label="Visibility"><option value="private">Private</option><option value="public">Public</option></select><button type="submit">Create repo</button></form><div class="msg" id="cm"></div>`
-      + kpi([[sum("m14"), "merged, 14 days"], [sum("op"), "open pull requests"], [sum("q"), "queued jobs"], [usd(sum("usd")), "cost, 14 days"]])
-      + (rs.length ? `<div class="flt"><input type="text" id="rq" placeholder="Filter repositories" value="${esc(rq)}" autocomplete="off"></div><div class="tw"><table class="tb2"><thead><tr><th>Repository</th><th>Bug-fix team</th><th>Pull requests</th><th>Pipelines</th><th class="n">Merged</th><th class="n">Open</th><th class="n" title="Open longer than 7 days without merge">Stale</th><th class="n">Queued</th><th class="n">Cost</th></tr></thead><tbody>${rs.map(row).join("")}</tbody></table></div>` : `<div class="emp"><b>No repository yet</b><span>Add one above, for example owner/name.</span></div>`);
+      + kpi([[sum("m14"), "merged, 14 days"], [sum("op"), "open pull requests"], [sum("q"), "queued jobs"], [usd(sum("usd")), "paid, 14 days"], [usd(sum("val")), "login value, 14 days, not billed"]])
+      + (rs.length ? `<div class="flt"><input type="text" id="rq" placeholder="Filter repositories" value="${esc(rq)}" autocomplete="off"></div><div class="tw"><table class="tb2"><thead><tr><th>Repository</th><th>Bug-fix team</th><th>Pull requests</th><th>Pipelines</th><th class="n">Merged</th><th class="n">Open</th><th class="n" title="Open longer than 7 days without merge">Open &gt; 7 d</th><th class="n">Queued</th><th class="n" title="Paid for API keys in the last 14 days">Paid</th></tr></thead><tbody>${rs.map(row).join("")}</tbody></table></div>` : `<div class="emp"><b>No repository yet</b><span>Add one above, for example owner/name.</span></div>`);
     const flt = () => { const q = rq.trim().toLowerCase(); for (const t of P0.querySelectorAll("tr[data-r]")) t.hidden = !!q && !t.dataset.r.toLowerCase().includes(q); };
     if ($("rq")) { $("rq").oninput = (e) => { rq = e.target.value; flt(); }; flt(); }
     for (const t of P0.querySelectorAll("tr[data-r]")) t.onclick = () => rdet(t.dataset.r);
@@ -241,7 +250,7 @@
         let id = f.dataset.h;
         if (!id) id = (v.ssh || "").replace(/^.*@/, "").replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40);
         if (b.dataset.op === "del") {
-          if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Click again to remove"; return; }
+          if (!(await A.danger({ title: `Remove the machine ${id}?`, items: ["The office stops using it for jobs and pipeline steps.", "Its settings are deleted. Files and containers on the machine stay where they are.", "You can add it again later."], ok: "Remove machine" }))) return;
           await post({ op: "del", id }, "/api/host");
           hide();
           return hosts();
@@ -357,12 +366,12 @@
         <label>Ollama address</label><input type="text" name="ollama" value="${esc(s.prov?.ollama?.base || "")}" placeholder="${esc(ol.dbase)}">
         <label>Ollama context</label><input type="number" name="octx" min="2048" step="1024" value="${s.prov?.ollama?.ctx || 32768}"><div class="hint">Tokens per request. Ollama's default of 4096 is too small for the workers.</div>
       </div></div></div>
-      <div data-tab="md" class="sec"><h4>Bug-fix team</h4><p class="mut sdesc">Models of the built-in team. People you hired for pipelines get their model on the <a href="#/team">Team</a> page.</p><div class="box"><div class="fm">
+      <div data-tab="md" class="sec"><h4>Bug-fix team</h4><p class="mut sdesc">Models of the bug-fix team. People you hired get their model on the <a href="#/team">Team</a> page.</p><div class="box"><div class="fm">
         ${["desk", "architect", "scout", "guard", "vet", "hunter", "repro", "fixer", "design_fixer", "tester", "reviewer", "watcher"].map((w) => `<label>${esc(A.NM?.[w] || w)}</label><div class="ck"><span style="flex:1">${RK[w].map(([k, l]) => esc((RK[w].length > 1 ? l + ": " : "") + (A.mdn ? A.mdn(s.md[k]) : s.md[k]))).join(" · ")}</span><button type="button" data-role="${w}">Change</button></div>`).join("")}
       </div></div></div>
       <div data-tab="gen" class="sec"><h4>Sign in</h4><div class="box">${cfg.google ? `<div class="ck"><b class="ok2">Google</b> ${esc(cfg.google)} can sign in.</div><div class="acts"><button type="button" class="dng" id="gu">Disconnect Google</button></div>` : `<div class="ck">Sign in with a one-time link from <code>apollo-office login-link</code>, or connect a Google account.</div><div class="acts"><button type="button" id="gl">Connect Google account</button></div>`}</div></div>
-      <div data-tab="gen" class="sec"><h4>Work</h4><div class="box"><div class="fm">
-        <label>Hunters</label><input type="number" name="hunters" min="0" max="12" value="${s.hunters}"><div class="hint">How many Hunters of the <a href="#/team">bug-fix team</a> look for bugs at the same time.</div>
+      <div data-tab="gen" class="sec"><h4>Bug-fix team</h4><div class="box"><div class="fm">
+        <label>Hunters at once</label><input type="number" name="hunters" min="0" max="12" value="${s.hunters}"><div class="hint">How many Hunters of the <a href="#/team">bug-fix team</a> look for bugs at the same time.</div>
         <label>Daily token limit</label><input type="number" name="tokday" min="0" value="${s.tokday}"><div class="hint">0 = no limit.</div>
         <label>Front desk</label>${tg("orch", s.orch, "turn on the front desk orchestrator")}<div class="hint">Off by default. When on, the boss at the entrance takes requests in the chat, can put work on every worker at once, and runs multi-milestone app projects (Architect, Builder). While off, project work waits in the queue.</div>
         <label>Working hours</label><div class="acts" style="margin:0;align-items:center">${tg("whon", s.wh?.on, "only work from")}<input type="time" name="whf" aria-label="Start time" value="${esc(s.wh?.from || "08:00")}"> to <input type="time" name="wht" aria-label="End time" value="${esc(s.wh?.to || "22:00")}"></div>
@@ -411,7 +420,7 @@
         <div class="dzr"><div><b>Sign out everywhere</b><div class="hint">Ends every session, including this one. You need a new link from <code>apollo-office login-link</code>.</div></div><button type="button" class="dng" data-dz="logout">Sign out everywhere</button></div>
         <div class="dzr"><div><b>Clear job history</b><div class="hint">Deletes finished and dropped jobs and their log. Pull requests, costs and the milestones of unfinished projects stay.</div></div><button type="button" class="dng" data-dz="history">Clear history</button></div>
         <div class="dzr"><div><b>Reset settings</b><div class="hint">Models, limits, budgets, notifications and paused workers go back to defaults. Keys, repositories and machines stay.</div></div><button type="button" class="dng" data-dz="reset">Reset settings</button></div>
-        <div class="dzr"><div><b>Delete all data</b><div class="hint">Deletes repositories, machines, jobs, projects, pull request history, costs, settings and stored API keys. Nothing on GitHub changes. Type <code>delete</code> to confirm.</div><input type="text" id="dzw" placeholder="delete" autocomplete="off" style="max-width:160px"></div><button type="button" class="dng" data-dz="wipe">Delete everything</button></div>
+        <div class="dzr"><div><b>Delete all data</b><div class="hint">Deletes repositories, machines, jobs, projects, pull request history, costs, settings and stored API keys. Nothing on GitHub changes.</div></div><button type="button" class="dng" data-dz="wipe">Delete everything</button></div>
         <div class="msg" id="dzm"></div></div></div>`;
     const stab = (k) => {
       tb = k;
@@ -463,8 +472,8 @@
     };
     for (const b of B.querySelectorAll("[data-dz]")) b.onclick = async () => {
       const op = b.dataset.dz, m = $("dzm");
-      if (op === "wipe" && $("dzw").value.trim() !== "delete") { m.className = "msg bad2"; m.textContent = "Type delete into the field first."; return; }
-      if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Click again to confirm"; return; }
+      const DZ = { logout: ["Sign out everywhere?", ["Every session ends, this one too.", "You need a new link from apollo-office login-link to sign in again."], "Sign out everywhere"], history: ["Clear the job history?", ["Finished and dropped jobs and their log are deleted for good.", "Pull requests and costs stay."], "Clear history"], reset: ["Reset all settings?", ["Models, limits, budgets, notifications and paused workers go back to defaults.", "Keys, repositories and machines stay."], "Reset settings"], wipe: ["Delete all office data?", ["Repositories, machines, jobs, pull request history, costs, settings and stored API keys are deleted for good.", "Nothing on GitHub changes."], "Delete everything"] }[op];
+      if (!(await A.danger({ title: DZ[0], items: DZ[1], ok: DZ[2], type: op === "wipe" ? "delete everything" : "" }))) return;
       busy(b, true, "Working…");
       const r = await post({ op, sure: op === "wipe" ? "delete" : undefined }, "/api/danger");
       if (r.error) { busy(b, false, "Try again"); b.dataset.sure = ""; m.className = "msg bad2"; m.textContent = r.error; return; }
@@ -493,9 +502,9 @@
     for (const b of B.querySelectorAll("[data-role]")) b.onclick = () => role(b.dataset.role);
     $("bt").onclick = () => send(true);
     if ($("gl")) $("gl").onclick = async () => { const r = await post({ op: "link" }, "/api/google"); if (r.url) location.href = r.url; };
-    if ($("gu")) $("gu").onclick = async (e) => { if (e.target.dataset.sure !== "1") { e.target.dataset.sure = "1"; e.target.textContent = "Click again to disconnect"; return; } await post({ op: "unlink" }, "/api/google"); settings(); };
+    if ($("gu")) $("gu").onclick = async () => { if (!(await A.danger({ title: "Disconnect the Google account?", items: [`${cfg.google} can no longer sign in.`, "Sign in with a one-time link from apollo-office login-link instead."], ok: "Disconnect Google" }))) return; await post({ op: "unlink" }, "/api/google"); settings(); };
     $("an").onclick = async (e) => {
-      if (cfg.api.on && e.target.dataset.sure !== "1") { e.target.dataset.sure = "1"; e.target.textContent = "Click again, the old token stops working"; return; }
+      if (cfg.api.on && !(await A.danger({ title: "Replace the report token?", items: ["The current token stops working right away.", "Tools that send bug reports need the new token."], ok: "Replace token" }))) return;
       const r = await post({ op: "new" }, "/api/apitok");
       if (!r.tok) return;
       await settings();
@@ -505,19 +514,19 @@
       const d = r || await get("/api/toks");
       $("tkl").innerHTML = (d.toks || []).length ? `<div class="tw"><table class="tb2 ro"><thead><tr><th>Name</th><th>Access</th><th>Created</th><th>Last used</th><th></th></tr></thead><tbody>${d.toks.map((t) => `<tr><td>${esc(t.n)}</td><td>${t.sc === "read" ? "read only" : "can change"}</td><td>${new Date(t.t0).toLocaleDateString()}</td><td>${t.last ? new Date(t.last).toLocaleString() : "never"}</td><td class="n"><button type="button" class="dng sm2" data-tkd="${esc(t.id)}">Revoke</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="hint">No tokens yet.</div>`;
       if (d.mcp) $("tkm").textContent = `claude mcp add apollo-office -e APOLLO_OFFICE_TOKEN=$TOKEN -- ${d.mcp.replace(" --token <token>", "")}\n\nor over HTTP: http://127.0.0.1:${cfg.api.port}/mcp with header Authorization: Bearer $TOKEN`;
-      for (const b of $("tkl").querySelectorAll("[data-tkd]")) b.onclick = async (e) => { if (e.target.dataset.sure !== "1") { e.target.dataset.sure = "1"; e.target.textContent = "Click again"; return; } tk(await post({ op: "del", id: b.dataset.tkd }, "/api/toks")); };
+      for (const b of $("tkl").querySelectorAll("[data-tkd]")) b.onclick = async () => { const tn = (d.toks || []).find((x) => x.id === b.dataset.tkd)?.n || "this token"; if (!(await A.danger({ title: `Revoke ${tn}?`, items: ["Apps and agents using it lose access right away.", "This cannot be undone; create a new token if you need one."], ok: "Revoke token" }))) return; tk(await post({ op: "del", id: b.dataset.tkd }, "/api/toks")); };
     };
     tk();
     $("tkc").onclick = async () => { const r = await post({ op: "new", n: $("tkn").value, sc: $("tks").value }, "/api/toks"); if (!r.token) return; $("tkn").value = ""; $("tkv").hidden = false; $("tkt").value = r.token; $("tkt").select(); tk(r); };
     $("hn").onclick = async (e) => {
-      if (cfg.hook.on && e.target.dataset.sure !== "1") { e.target.dataset.sure = "1"; e.target.textContent = "Click again, the old link stops working"; return; }
+      if (cfg.hook.on && !(await A.danger({ title: "Replace the error tracker link?", items: ["The current link stops working right away.", "Sentry or GlitchTip need the new link."], ok: "Replace link" }))) return;
       const r = await post({ op: "new" }, "/api/hooktok");
       if (!r.tok) return;
       await settings();
       $("htk").hidden = false; $("htv").value = `http://127.0.0.1:${cfg.api.port}/v1/hook?repo=owner/name&key=${r.tok}`; $("htv").select();
     };
-    if ($("ho")) $("ho").onclick = async (e) => { if (e.target.dataset.sure !== "1") { e.target.dataset.sure = "1"; e.target.textContent = "Click again to revoke"; return; } await post({ op: "off" }, "/api/hooktok"); settings(); };
-    if ($("ao")) $("ao").onclick = async (e) => { if (e.target.dataset.sure !== "1") { e.target.dataset.sure = "1"; e.target.textContent = "Click again to revoke"; return; } await post({ op: "off" }, "/api/apitok"); settings(); };
+    if ($("ho")) $("ho").onclick = async () => { if (!(await A.danger({ title: "Revoke the error tracker link?", items: ["Sentry or GlitchTip alerts stop arriving.", "You can create a new link later."], ok: "Revoke link" }))) return; await post({ op: "off" }, "/api/hooktok"); settings(); };
+    if ($("ao")) $("ao").onclick = async () => { if (!(await A.danger({ title: "Revoke the report token?", items: ["Tools that send bug reports lose access right away.", "You can create a new token later."], ok: "Revoke token" }))) return; await post({ op: "off" }, "/api/apitok"); settings(); };
     $("uc").onclick = async (e) => { busy(e.target, true, "Checking…"); const r = await post({ op: "check" }, "/api/update"); await settings(); $("um").textContent = r.ok ? (r.r.new ? `Update ${r.r.latest} downloaded.` : `Up to date (latest ${r.r.latest}).`) : r.m; };
     if ($("ua")) $("ua").onclick = async (e) => { busy(e.target, true, "Restarting…"); await post({ op: "apply" }, "/api/update"); setTimeout(() => location.reload(), 6000); };
   };
@@ -532,11 +541,11 @@
     const d14 = c.days.reduce((s, d) => s + (d.usd || 0), 0), v14 = c.days.reduce((s, d) => s + (d.val || 0), 0), d7 = c.days.slice(0, 7).reduce((s, d) => s + (d.usd || 0), 0);
     const dm = new Map(c.days.map((d) => [d.day, d])), d0 = [new Date().toISOString().slice(0, 10), c.days[0]?.day || ""].sort().pop(), dd = c.days.length ? Array.from({ length: 14 }, (_, i) => { const k = new Date(Date.parse(d0 + "T00:00:00Z") - (13 - i) * 864e5).toISOString().slice(0, 10); return dm.get(k) || { day: k, usd: 0, val: 0 }; }) : [], mx = Math.max(0.01, ...dd.map((d) => (d.usd || 0) + (d.val || 0)));
     const nil = `<div class="emp"><b>Nothing yet</b><span>Costs show up after the first jobs ran.</span></div>`;
-    B.innerHTML = ph(`API keys are billed per token, that is what you pay. Login value is what the same work would have cost with API keys while it ran on your Claude Code or Codex login, which costs nothing extra.${t.unk ? ` ${t.unk} calls today had no known price.` : ""}`)
-      + kpi([[usd(t.usd || 0), "API today"], [usd(d7), "API, 7 days"], [usd(d14), "API, 14 days"], [usd(c.days.slice(0, 7).reduce((s, d) => s + (d.val || 0), 0)), "login value, 7 days"], [c.budday ? usd(c.budday) : "none", "daily budget"]])
+    B.innerHTML = ph(`<b class="t1">You paid ${usd(d7)} for API keys in the last 7 days.</b> Work on your Claude Code or Codex login costs nothing extra; its login value shows what it would have cost with API keys.${t.unk ? ` ${t.unk} calls today had no known price.` : ""}`)
+      + kpi([[usd(d7), "paid, last 7 days"], [usd(c.days.slice(0, 7).reduce((s, d) => s + (d.val || 0), 0)), "login value, last 7 days, not billed", "t2"], [usd(t.usd || 0), "paid today"], [c.budday ? usd(c.budday) : "No limit", "daily budget"]])
       + (c.hints.length ? `<section class="sec2"><h3>Cheaper models <span class="mut">${c.hints.length} ${c.hints.length === 1 ? "hint" : "hints"}</span></h3><div class="lst">${c.hints.slice(0, 3).map((h) => `<div class="hr2"><div><span class="t1">${esc(h)}</span></div></div>`).join("")}${c.hints.length > 3 ? `<details class="more"><summary>Show ${c.hints.length - 3} more</summary>${c.hints.slice(3).map((h) => `<div class="hr2"><div><span class="t1">${esc(h)}</span></div></div>`).join("")}</details>` : ""}</div></section>` : "")
       + `<section class="sec2"><h3>Last 14 days <span class="mut">${usd(d14)} API · ${usd(v14)} login value</span></h3>${dd.length ? `<div class="cch" role="img" aria-label="Daily cost, last 14 days: ${esc(dd.map((d) => `${d.day.slice(5)} ${usd(d.usd)} API, ${usd(d.val)} login`).join("; "))}">${dd.map((d) => `<div title="${esc(d.day)}: ${usd(d.usd)} API, ${usd(d.val)} login value"><i class="v" style="height:${((d.val || 0) / mx) * 100}%"></i><i class="u" style="height:${((d.usd || 0) / mx) * 100}%"></i><span>${esc(d.day.slice(8))}</span></div>`).join("")}</div><div class="lgd"><span><i class="u"></i>API</span><span><i class="v"></i>Login value</span></div>` : nil}</section>`
-      + `<section class="sec2"><h3>Pipelines <span class="mut">30 days</span></h3>${(c.flows || []).length ? tb([["Pipeline"], ["Runs", "n"], ["API", "n"], ["Login value", "n"], ["Per run", "n"]], c.flows.map((f) => `<tr><td>${esc(f.n || f.flow)}</td><td class="n">${f.runs}</td><td class="n">${usd(f.usd)}</td><td class="n">${usd(f.val)}</td><td class="n">${f.runs ? usd(((f.usd || 0) + (f.val || 0)) / f.runs) : "–"}</td></tr>`)) : `<div class="emp"><b>No pipeline costs yet</b><span>Costs of pipeline steps show up here after their first runs.</span></div>`}</section>`
+      + `<section class="sec2"><h3>Pipelines <span class="mut">30 days</span></h3>${(c.flows || []).length ? tb([["Pipeline"], ["Runs", "n"], ["Paid", "n"], ["Login value", "n"], ["Paid per run", "n"]], c.flows.map((f) => `<tr><td>${esc(f.n || f.flow)}</td><td class="n">${f.runs}</td><td class="n">${usd(f.usd)}</td><td class="n">${usd(f.val)}</td><td class="n">${f.runs && f.usd ? usd(f.usd / f.runs) : "–"}</td></tr>`)) : `<div class="emp"><b>No pipeline costs yet</b><span>Costs of pipeline steps show up here after their first runs.</span></div>`}</section>`
       + `<section class="sec2"><h3>Repositories <span class="mut">30 days</span></h3>${c.repos.length ? tb([["Repository"], ["Jobs", "n"], ["API", "n"], ["Login value", "n"]], c.repos.map((r) => `<tr><td>${esc(r.repo)}</td><td class="n">${r.jobs}</td><td class="n">${usd(r.usd)}</td><td class="n">${usd(r.val)}</td></tr>`)) : nil}</section>`
       + `<section class="sec2"><h3>Bug-fix team models <span class="mut">90 days</span></h3>${c.stats.length ? tb([["Repository"], ["Worker"], ["Model"], ["Jobs", "n"], ["PRs", "n"], ["Merged", "n"], ["Rejected", "n"], ["Per job", "n"], ["Per merge", "n"]], c.stats.map((r) => `<tr><td>${esc(r.repo)}</td><td>${esc(A.NM?.[r.w] || r.w)}</td><td>${esc(r.nm)}${r.sub ? ` <span class="mut">login</span>` : ""}</td><td class="n">${r.jobs}</td><td class="n">${r.prs}</td><td class="n">${r.mg} <span class="mut">${rate(r.mg, r.prs)}</span></td><td class="n">${r.cl}</td><td class="n">${usd(r.usd == null ? null : r.usd / r.jobs)}</td><td class="n">${r.mg && r.usd != null ? usd(r.usd / r.mg) : "–"}</td></tr>`)) : nil}</section>`
       + `<section class="sec2"><h3>Budget and prices</h3><div class="box"><form id="fb" class="fm"><label>Daily budget</label><input type="number" name="budday" min="0" step="0.01" value="${c.budday || 0}"><div class="hint">USD for API keys, 0 = no limit.</div>
@@ -567,11 +576,13 @@
   };
   A.health = health;
 
+  const JSN = { vet: "Being checked", ready: "Ready to start", hunt: "Hunting for bugs", repro: "Reproducing the bug", fix: "Fixing", ci: "Running the tests", review: "Being reviewed", gate: "Final check", approve: "Waiting for your approval", submit: "Opening the pull request", done: "Done", drop: "Dropped", park: "Parked" };
+  const JNX = { vet: "Vet decides if this is one clear bug.", ready: "Starts when a machine lane is free.", repro: "Next: a fix for the failing test.", fix: "Next: the project's tests.", ci: "Next: a review of the change.", review: "Next: the final check.", gate: "Next: your approval or the pull request.", approve: "Look at the diff below, then submit or drop it.", submit: "The pull request opens on GitHub.", park: "Paused, it waits until you requeue it." };
   const job = async (id) => {
     const j = await get("/api/job?id=" + id);
     if (j.error) return;
     jid = id;
-    show(j.st === "approve" ? "Review pull request" : "Job " + id, "job");
+    show(j.st === "approve" ? "Review pull request" : j.title || "Job " + id, "job");
     const tag = (j.repo.split("/")[1] || j.repo) + (j.num ? "#" + j.num : "");
     const cs = j.cost && j.cost.n ? `<div class="msg">Cost: ${j.cost.usd != null ? usd(j.cost.usd) + " API" : ""}${j.cost.usd != null && j.cost.val != null ? " · " : ""}${j.cost.val != null ? usd(j.cost.val) + " login value" : ""}${j.cost.usd == null && j.cost.val == null ? "unknown" : ""} · ${Math.round((j.cost.ti || 0) / 1000)}k in, ${Math.round((j.cost.tou || 0) / 1000)}k out</div>` : "";
     const ev = (j.ev || []).map((e) => `<div><span class="tm">${new Date(e.t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span><span>${esc(e.w)}</span><span>${esc(e.m)}</span></div>`).join("");
@@ -595,7 +606,7 @@
       ${j.proof ? `<div class="sec"><h4>Proof</h4><pre class="df">${esc((j.proof.a || "") + "\n\n" + (j.proof.b || ""))}</pre></div>` : ""}
       ${msSummaryHtml}${repHtml}${artHtml}
       <div class="sec"><h4>Diff</h4>${dview(j.df)}</div>
-      <div class="acts"><button class="pri" id="ba">Submit pull request</button><button class="dng" id="bd">Drop</button></div><div class="msg" id="jm"></div>
+      <div class="acts"><button class="pri" id="ba">Submit pull request</button><button class="dng" id="bd" title="Do not open this pull request and take the job out of the queue">Drop</button></div><div class="msg" id="jm"></div>
       <div class="sec"><h4>Log</h4><div class="log">${ev}</div></div>`;
       const opBtn = B.querySelector("[data-openproj]");
       if (opBtn) opBtn.onclick = () => projects();
@@ -606,12 +617,12 @@
         A.apply(r); hide();
       };
       $("bd").onclick = async () => {
-        if ($("bd").dataset.sure !== "1") { $("bd").dataset.sure = "1"; $("bd").textContent = "Click again to drop"; return; }
+        if (!(await A.danger({ title: "Drop this fix?", items: ["No pull request is opened.", "The fix and its proof are discarded; Try again starts the work from the beginning."], ok: "Drop fix" }))) return;
         A.apply(await post({ a: "drop", id })); hide();
       };
       return;
     }
-let nq = null;
+    let nq = null;
     try { nq = typeof j.question_json === "string" ? JSON.parse(j.question_json) : j.question_json; } catch {}
     const needBox = j.st === "need_user" ? `<div class="sec"><div class="box nqbox">
       <div class="hd2"><b>Input needed (${esc(A.NM?.[nq?.worker] || nq?.worker || "worker")})</b>${nq?.secret ? `<span class="pill warn">encrypted → $${esc(nq?.env_name || "")}</span>` : ""}</div>
@@ -622,12 +633,12 @@ let nq = null;
       <div class="acts"><button class="pri" id="nqb">Send Reply &amp; Resume</button></div><div class="msg" id="nqm"></div>
     </div></div>` : "";
     const ansHtml = (j.answers?.length || j.secret_envs?.length) ? `<div class="sec"><h4>User answers &amp; secrets</h4><div class="box">${(j.answers || []).map((a) => `<div class="ck" style="margin:3px 0"><b>${esc(a.q || "Question")}:</b> <span>${a.secret ? `encrypted as $${esc(a.env_name || "")}` : esc(a.a || "")}</span></div>`).join("")}${j.secret_envs?.length ? `<div class="hint" style="margin-top:4px">Stored Vault env vars: ${j.secret_envs.map((x) => "$" + esc(x)).join(", ")}</div>` : ""}</div></div>` : "";
-    B.innerHTML = `${needBox}<div class="sec"><div class="box"><div class="hd2"><b>${esc(j.title)}</b><span class="pill">${esc(j.st)}</span></div><div class="msg">${esc(j.repo)} ${esc(tag)} · ${esc(j.kind)}${j.h ? " · " + esc(j.h) : ""}\n${esc(j.why || "")}</div>${cs}
-      <div class="acts">${j.url ? `<button data-u="${esc(j.url)}">Open on GitHub</button>` : ""}${j.project_id ? `<button type="button" data-openproj="${j.project_id}">Project #${j.project_id}</button>` : ""}${!["done", "drop"].includes(j.st) ? `<button class="dng" data-d="${id}">Drop</button>` : ""}${j.st === "drop" && ["fix", "build", "design_fix", "test_app", "architect", "epic_pr"].includes(j.kind) ? `<button data-rq="${id}">Try again</button>` : ""}</div></div></div>
+    B.innerHTML = `${needBox}<div class="sec"><div class="box"><div class="hd2"><b>${esc(j.title)}</b></div><div class="jst"><span class="stt st-${esc(j.st)}">${esc(JSN[j.st] || j.st)}</span><span class="mut">${esc(JNX[j.st] || "")}</span></div><div class="msg">${esc(j.repo)} ${esc(tag)} · ${esc(j.kind)}${j.h ? " · on " + esc(j.h) : ""}${j.why ? "\n" + esc(j.why) : ""}</div>${cs}
+      <div class="acts">${j.url ? `<button data-u="${esc(j.url)}">Open on GitHub</button>` : ""}${j.project_id ? `<button type="button" data-openproj="${j.project_id}">Project #${j.project_id}</button>` : ""}${!["done", "drop"].includes(j.st) ? `<button class="dng" data-d="${id}" data-dk="${esc(j.kind || "")}" data-ds="${esc(j.st || "")}" title="Stop working on this job and take it out of the queue">Drop job</button>` : ""}${j.st === "drop" && ["fix", "build", "design_fix", "test_app", "architect", "epic_pr"].includes(j.kind) ? `<button data-rq="${id}">Try again</button>` : ""}</div></div></div>
       ${ansHtml}
       ${msSummaryHtml}${repHtml}${artHtml}
       ${j.df ? `<div class="sec"><h4>Diff</h4>${dview(j.df)}</div>` : ""}
-      <div class="sec"><h4>Log</h4><div class="log">${ev || `<div class="empty">nothing yet</div>`}</div></div>`;
+      <details class="sec jlog"><summary>Full log</summary><div class="log">${ev || `<div class="empty">nothing yet</div>`}</div></details>`;
     const opBtn2 = B.querySelector("[data-openproj]");
     if (opBtn2) opBtn2.onclick = () => projects();
     if (j.st === "need_user") {
